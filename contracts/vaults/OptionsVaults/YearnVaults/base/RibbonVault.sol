@@ -2,10 +2,10 @@
 pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     ReentrancyGuardUpgradeable
 } from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -16,13 +16,14 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import {Vault} from "../../../libraries/Vault/Vault.sol";
-import {VaultTheta} from "../../../libraries/Vault/VaultTheta.sol";
-import {
-    VaultLifecycleWithSwap
-} from "../../../libraries/VaultLifecycleWithSwap.sol";
-import {ShareMath} from "../../../libraries/ShareMath.sol";
-import {IWETH} from "../../../interfaces/IWETH.sol";
+import {DSMath} from "../../../../vendor/DSMath.sol";
+import {IYearnRegistry, IYearnVault} from "../../../../interfaces/IYearn.sol";
+import {Vault} from "../../../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../../../libraries/Vault/VaultTheta.sol";
+import {VaultLifecycle} from "../../../../libraries/VaultLifecycle.sol";
+import {VaultLifecycleYearn} from "../../../../libraries/VaultLifecycleYearn.sol";
+import {ShareMath} from "../../../../libraries/ShareMath.sol";
+import {IWETH} from "../../../../interfaces/IWETH.sol";
 
 contract RibbonVault is
     ReentrancyGuardUpgradeable,
@@ -70,12 +71,14 @@ contract RibbonVault is
     /// @notice Management fee charged on entire AUM in rollToNextOption. Only charged when there is no loss.
     uint256 public managementFee;
 
+    /// @notice Yearn vault contract
+    IYearnVault public collateralToken;
+
     // Gap is left to avoid storage collisions. Though RibbonVault is not upgradeable, we add this as a safety measure.
     uint256[30] private ____gap;
 
     // *IMPORTANT* NO NEW STORAGE VARIABLES SHOULD BE ADDED HERE
-    // This is to prevent storage collisions. All storage variables should be appended to RibbonThetaVaultStorage
-    // or RibbonDeltaVaultStorage instead. Read this documentation to learn more:
+    // This is to prevent storage collisions. All storage variables should be appended to RibbonThetaYearnVaultStorage
     // https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable#modifying-your-contracts
 
     /************************************************
@@ -88,8 +91,14 @@ contract RibbonVault is
     /// @notice USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
     address public immutable USDC;
 
-    /// @notice Deprecated: 15 minute timelock between commitAndClose and rollToNexOption.
+    /// @notice 15 minute timelock between commitAndClose and rollToNexOption.
     uint256 public constant DELAY = 0;
+
+    /// @notice Withdrawal buffer for yearn vault
+    uint256 public constant YEARN_WITHDRAWAL_BUFFER = 5; // 0.05%
+
+    /// @notice Slippage incurred during withdrawal
+    uint256 public constant YEARN_WITHDRAWAL_SLIPPAGE = 5; // 0.05%
 
     /// @notice 7 day period between each options sale.
     uint256 public constant PERIOD = 7 days;
@@ -108,9 +117,12 @@ contract RibbonVault is
     // https://github.com/opynfinance/GammaProtocol/blob/master/contracts/core/MarginPool.sol
     address public immutable MARGIN_POOL;
 
-    // SWAP_CONTRACT is a contract for settling bids via signed messages
-    // https://github.com/ribbon-finance/ribbon-v2/blob/master/contracts/utils/Swap.sol
-    address public immutable SWAP_CONTRACT;
+    // GNOSIS_EASY_AUCTION is Gnosis protocol's contract for initiating auctions and placing bids
+    // https://github.com/gnosis/ido-contracts/blob/main/contracts/EasyAuction.sol
+    address public immutable GNOSIS_EASY_AUCTION;
+
+    // Yearn registry contract
+    address public immutable YEARN_REGISTRY;
 
     /************************************************
      *  EVENTS
@@ -151,26 +163,30 @@ contract RibbonVault is
      * @param _usdc is the USDC contract
      * @param _gammaController is the contract address for opyn actions
      * @param _marginPool is the contract address for providing collateral to opyn
-     * @param _swapContract is the contract address that facilitates bids settlement
+     * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
+     * @param _yearnRegistry is the address of the yearn registry from token to vault token
      */
     constructor(
         address _weth,
         address _usdc,
         address _gammaController,
         address _marginPool,
-        address _swapContract
+        address _gnosisEasyAuction,
+        address _yearnRegistry
     ) {
         require(_weth != address(0), "!_weth");
         require(_usdc != address(0), "!_usdc");
-        require(_swapContract != address(0), "!_swapContract");
+        require(_gnosisEasyAuction != address(0), "!_gnosisEasyAuction");
         require(_gammaController != address(0), "!_gammaController");
         require(_marginPool != address(0), "!_marginPool");
+        require(_yearnRegistry != address(0), "!_yearnRegistry");
 
         WETH = _weth;
         USDC = _usdc;
         GAMMA_CONTROLLER = _gammaController;
         MARGIN_POOL = _marginPool;
-        SWAP_CONTRACT = _swapContract;
+        GNOSIS_EASY_AUCTION = _gnosisEasyAuction;
+        YEARN_REGISTRY = _yearnRegistry;
     }
 
     /**
@@ -186,7 +202,7 @@ contract RibbonVault is
         string memory _tokenSymbol,
         VaultTheta.VaultParams calldata _vaultParams
     ) internal initializer {
-        VaultLifecycleWithSwap.verifyInitializerParams(
+        VaultLifecycle.verifyInitializerParams(
             _owner,
             _keeper,
             _feeRecipient,
@@ -211,8 +227,9 @@ contract RibbonVault is
         );
         vaultParams = _vaultParams;
 
-        uint256 assetBalance =
-            IERC20(vaultParams.asset).balanceOf(address(this));
+        _upgradeYearnVault();
+
+        uint256 assetBalance = totalBalance();
         ShareMath.assertUint104(assetBalance);
         vaultState.lastLockedAmount = uint104(assetBalance);
 
@@ -278,9 +295,7 @@ contract RibbonVault is
             newPerformanceFee < 100 * Vault.FEE_MULTIPLIER,
             "Invalid performance fee"
         );
-
         emit PerformanceFeeSet(performanceFee, newPerformanceFee);
-
         performanceFee = newPerformanceFee;
     }
 
@@ -298,18 +313,6 @@ contract RibbonVault is
     /************************************************
      *  DEPOSIT & WITHDRAWALS
      ***********************************************/
-
-    /**
-     * @notice Deposits ETH into the contract and mint vault shares. Reverts if the asset is not WETH.
-     */
-    function depositETH() external payable nonReentrant {
-        require(vaultParams.asset == WETH, "!WETH");
-        require(msg.value > 0, "!value");
-
-        _depositFor(msg.value, msg.sender);
-
-        IWETH(WETH).deposit{value: msg.value}();
-    }
 
     /**
      * @notice Deposits the `asset` from msg.sender.
@@ -339,12 +342,36 @@ contract RibbonVault is
         nonReentrant
     {
         require(amount > 0, "!amount");
-        require(creditor != address(0));
+        require(creditor != address(0), "!creditor");
 
         _depositFor(amount, creditor);
 
         // An approve() by the msg.sender is required beforehand
         IERC20(vaultParams.asset).safeTransferFrom(
+            msg.sender,
+            address(this),
+            amount
+        );
+    }
+
+    /**
+     * @notice Deposits the `collateralToken` into the contract and mint vault shares.
+     * @param amount is the amount of `collateralToken` to deposit
+     */
+    function depositYieldToken(uint256 amount) external nonReentrant {
+        require(amount > 0, "!amount");
+
+        uint256 amountInAsset =
+            DSMath.wmul(
+                amount,
+                collateralToken.pricePerShare().mul(
+                    VaultLifecycleYearn.decimalShift(address(collateralToken))
+                )
+            );
+
+        _depositFor(amountInAsset, msg.sender);
+
+        IERC20(address(collateralToken)).safeTransferFrom(
             msg.sender,
             address(this),
             amount
@@ -379,7 +406,6 @@ contract RibbonVault is
             );
 
         uint256 depositAmount = amount;
-
         // If we have a pending deposit in the current round, we add on to the pending deposit
         if (currentRound == depositReceipt.round) {
             uint256 newAmount = uint256(depositReceipt.amount).add(amount);
@@ -396,7 +422,6 @@ contract RibbonVault is
 
         uint256 newTotalPending = uint256(vaultState.totalPending).add(amount);
         ShareMath.assertUint128(newTotalPending);
-
         vaultState.totalPending = uint128(newTotalPending);
     }
 
@@ -421,11 +446,8 @@ contract RibbonVault is
         Vault.Withdrawal storage withdrawal = withdrawals[msg.sender];
 
         bool withdrawalIsSameRound = withdrawal.round == currentRound;
-
         emit InitiateWithdraw(msg.sender, numShares, currentRound);
-
         uint256 existingShares = uint256(withdrawal.shares);
-
         uint256 withdrawalShares;
         if (withdrawalIsSameRound) {
             withdrawalShares = existingShares.add(numShares);
@@ -434,7 +456,6 @@ contract RibbonVault is
             withdrawalShares = numShares;
             withdrawals[msg.sender].round = uint16(currentRound);
         }
-
         ShareMath.assertUint128(withdrawalShares);
         withdrawals[msg.sender].shares = uint128(withdrawalShares);
 
@@ -473,8 +494,22 @@ contract RibbonVault is
 
         _burn(address(this), withdrawalShares);
 
+        VaultLifecycleYearn.unwrapYieldToken(
+            withdrawAmount,
+            vaultParams.asset,
+            address(collateralToken),
+            YEARN_WITHDRAWAL_BUFFER,
+            YEARN_WITHDRAWAL_SLIPPAGE
+        );
+
         require(withdrawAmount > 0, "!withdrawAmount");
-        transferAsset(msg.sender, withdrawAmount);
+
+        VaultLifecycleYearn.transferAsset(
+            WETH,
+            vaultParams.asset,
+            msg.sender,
+            withdrawAmount
+        );
 
         return withdrawAmount;
     }
@@ -529,6 +564,7 @@ contract RibbonVault is
         }
 
         ShareMath.assertUint128(numShares);
+
         depositReceipts[msg.sender].unredeemedShares = uint128(
             unredeemedShares.sub(numShares)
         );
@@ -561,34 +597,34 @@ contract RibbonVault is
 
     /**
      * @notice Helper function that performs most administrative tasks
-     * such as minting new shares, getting vault fees, etc.
+     * such as setting next option, minting new shares, getting vault fees, etc.
      * @param lastQueuedWithdrawAmount is old queued withdraw amount
      * @param currentQueuedWithdrawShares is the queued withdraw shares for the current round
-     * @return lockedBalance is the new balance used to calculate next option purchase size or collateral size
-     * @return queuedWithdrawAmount is the new queued withdraw amount for this round
+     * @return newOption is the new option address
+     * @return queuedWithdrawAmount is the queued amount for withdrawal
      */
-    function _closeRound(
+    function _rollToNextOption(
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
-    ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {
-        address recipient = feeRecipient;
-        uint256 mintShares;
-        uint256 performanceFeeInAsset;
-        uint256 totalVaultFee;
-        {
-            uint256 newPricePerShare;
-            (
-                lockedBalance,
-                queuedWithdrawAmount,
-                newPricePerShare,
-                mintShares,
-                performanceFeeInAsset,
-                totalVaultFee
-            ) = VaultLifecycleWithSwap.closeRound(
+    ) internal returns (address, uint256) {
+        require(block.timestamp >= optionState.nextOptionReadyAt, "!ready");
+
+        address newOption = optionState.nextOption;
+        require(newOption != address(0), "!nextOption");
+
+        (
+            uint256 lockedBalance,
+            uint256 queuedWithdrawAmount,
+            uint256 newPricePerShare,
+            uint256 mintShares,
+            uint256 performanceFeeInAsset,
+            uint256 totalVaultFee
+        ) =
+            VaultLifecycle.rollover(
                 vaultState,
-                VaultLifecycleWithSwap.CloseParams(
+                VaultLifecycle.RolloverParams(
                     vaultParams.decimals,
-                    IERC20(vaultParams.asset).balanceOf(address(this)),
+                    totalBalance(),
                     totalSupply(),
                     lastQueuedWithdrawAmount,
                     performanceFee,
@@ -597,44 +633,67 @@ contract RibbonVault is
                 )
             );
 
-            // Finalize the pricePerShare at the end of the round
-            uint256 currentRound = vaultState.round;
-            roundPricePerShare[currentRound] = newPricePerShare;
+        optionState.currentOption = newOption;
+        optionState.nextOption = address(0);
 
-            emit CollectVaultFees(
-                performanceFeeInAsset,
-                totalVaultFee,
-                currentRound,
-                recipient
-            );
+        // Finalize the pricePerShare at the end of the round
+        uint256 currentRound = vaultState.round;
+        roundPricePerShare[currentRound] = newPricePerShare;
 
-            vaultState.totalPending = 0;
-            vaultState.round = uint16(currentRound + 1);
-        }
+        address recipient = feeRecipient;
+
+        emit CollectVaultFees(
+            performanceFeeInAsset,
+            totalVaultFee,
+            currentRound,
+            recipient
+        );
+
+        vaultState.totalPending = 0;
+        vaultState.round = uint16(currentRound + 1);
+        ShareMath.assertUint104(lockedBalance);
+        vaultState.lockedAmount = uint104(lockedBalance);
 
         _mint(address(this), mintShares);
 
+        address collateral = address(collateralToken);
+
+        // Wrap entire `asset` balance to `collateralToken` balance
+        VaultLifecycleYearn.wrapToYieldToken(vaultParams.asset, collateral);
+
         if (totalVaultFee > 0) {
-            transferAsset(payable(recipient), totalVaultFee);
+            VaultLifecycleYearn.withdrawYieldAndBaseToken(
+                WETH,
+                vaultParams.asset,
+                collateral,
+                recipient,
+                totalVaultFee
+            );
         }
 
-        return (lockedBalance, queuedWithdrawAmount);
+        return (newOption, queuedWithdrawAmount);
     }
 
-    /**
-     * @notice Helper function to make either an ETH transfer or ERC20 transfer
-     * @param recipient is the receiving address
-     * @param amount is the transfer amount
-     */
-    function transferAsset(address recipient, uint256 amount) internal {
-        address asset = vaultParams.asset;
-        if (asset == WETH) {
-            IWETH(WETH).withdraw(amount);
-            (bool success, ) = recipient.call{value: amount}("");
-            require(success, "Transfer failed");
-            return;
-        }
-        IERC20(asset).safeTransfer(recipient, amount);
+    /*
+      Upgrades the vault to point to the latest yearn vault for the asset token
+    */
+    function upgradeYearnVault() external onlyOwner {
+        // Unwrap old yvUSDC
+        IYearnVault collateral = IYearnVault(collateralToken);
+        collateral.withdraw(
+            collateral.balanceOf(address(this)),
+            address(this),
+            YEARN_WITHDRAWAL_SLIPPAGE
+        );
+
+        _upgradeYearnVault();
+    }
+
+    function _upgradeYearnVault() internal {
+        address collateralAddr =
+            IYearnRegistry(YEARN_REGISTRY).latestVault(vaultParams.asset);
+        require(collateralAddr != address(0), "!collateralToken");
+        collateralToken = IYearnVault(collateralAddr);
     }
 
     /************************************************
@@ -718,16 +777,19 @@ contract RibbonVault is
      * @return total balance of the vault, including the amounts locked in third party protocols
      */
     function totalBalance() public view returns (uint256) {
-        // After calling closeRound, current option is set to none
-        // We also commit the lockedAmount but do not deposit into Opyn
-        // which results in double counting of asset balance and lockedAmount
-
         return
-            optionState.currentOption != address(0)
-                ? uint256(vaultState.lockedAmount).add(
-                    IERC20(vaultParams.asset).balanceOf(address(this))
+            uint256(vaultState.lockedAmount)
+                .add(IERC20(vaultParams.asset).balanceOf(address(this)))
+                .add(
+                DSMath.wmul(
+                    collateralToken.balanceOf(address(this)),
+                    collateralToken.pricePerShare().mul(
+                        VaultLifecycleYearn.decimalShift(
+                            address(collateralToken)
+                        )
+                    )
                 )
-                : IERC20(vaultParams.asset).balanceOf(address(this));
+            );
     }
 
     /**
@@ -756,4 +818,8 @@ contract RibbonVault is
     function totalPending() external view returns (uint256) {
         return vaultState.totalPending;
     }
+
+    /************************************************
+     *  HELPERS
+     ***********************************************/
 }

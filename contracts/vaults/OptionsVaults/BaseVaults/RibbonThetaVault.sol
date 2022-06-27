@@ -6,27 +6,26 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {DSMath} from "../../vendor/DSMath.sol";
-import {GnosisAuction} from "../../libraries/GnosisAuction.sol";
-import {Vault} from "../../libraries/Vault/Vault.sol";
-import {VaultTheta} from "../../libraries/Vault/VaultTheta.sol";
-import {ShareMath} from "../../libraries/ShareMath.sol";
-import {VaultLifecycle} from "../../libraries/VaultLifecycle.sol";
-import {VaultLifecycleYearn} from "../../libraries/VaultLifecycleYearn.sol";
-import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
-import {RibbonVault} from "./base/RibbonVault.sol";
+
+import {GnosisAuction} from "../../../libraries/GnosisAuction.sol";
 import {
-    RibbonThetaYearnVaultStorage
-} from "../../storage/RibbonThetaYearnVaultStorage.sol";
-import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
+    RibbonThetaVaultStorage
+} from "../../../storage/RibbonThetaVaultStorage.sol";
+import {Vault} from "../../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../../libraries/Vault/VaultTheta.sol";
+import {VaultLifecycle} from "../../../libraries/VaultLifecycle.sol";
+import {ShareMath} from "../../../libraries/ShareMath.sol";
+import {ILiquidityGauge} from "../../../interfaces/ILiquidityGauge.sol";
+import {IVaultPauser} from "../../../interfaces/IVaultPauser.sol";
+import {RibbonVault} from "./base/RibbonVault.sol";
 
 /**
  * UPGRADEABILITY: Since we use the upgradeable proxy pattern, we must observe
  * the inheritance chain closely.
- * Any changes/appends in storage variable needs to happen in RibbonThetaYearnVaultStorage.
- * RibbonThetaYearnVault should not inherit from any other contract aside from RibbonVault, RibbonThetaYearnVaultStorage
+ * Any changes/appends in storage variable needs to happen in RibbonThetaVaultStorage.
+ * RibbonThetaVault should not inherit from any other contract aside from RibbonVault, RibbonThetaVaultStorage
  */
-contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
+contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
     using ShareMath for Vault.DepositReceipt;
@@ -63,6 +62,7 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
         uint256 premiumDiscount,
         uint256 newPremiumDiscount
     );
+
     event AuctionDurationSet(
         uint256 auctionDuration,
         uint256 newAuctionDuration
@@ -82,6 +82,38 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
     );
 
     /************************************************
+     *  STRUCTS
+     ***********************************************/
+
+    /**
+     * @notice Initialization parameters for the vault.
+     * @param _owner is the owner of the vault with critical permissions
+     * @param _feeRecipient is the address to recieve vault performance and management fees
+     * @param _managementFee is the management fee pct.
+     * @param _performanceFee is the perfomance fee pct.
+     * @param _tokenName is the name of the token
+     * @param _tokenSymbol is the symbol of the token
+     * @param _optionsPremiumPricer is the address of the contract with the
+       black-scholes premium calculation logic
+     * @param _strikeSelection is the address of the contract with strike selection logic
+     * @param _premiumDiscount is the vault's discount applied to the premium
+     * @param _auctionDuration is the duration of the gnosis auction
+     */
+    struct InitParams {
+        address _owner;
+        address _keeper;
+        address _feeRecipient;
+        uint256 _managementFee;
+        uint256 _performanceFee;
+        string _tokenName;
+        string _tokenSymbol;
+        address _optionsPremiumPricer;
+        address _strikeSelection;
+        uint32 _premiumDiscount;
+        uint256 _auctionDuration;
+    }
+
+    /************************************************
      *  CONSTRUCTOR & INITIALIZATION
      ***********************************************/
 
@@ -93,7 +125,6 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
      * @param _gammaController is the contract address for opyn actions
      * @param _marginPool is the contract address for providing collateral to opyn
      * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
-     * @param _yearnRegistry is the address of the yearn registry from token to vault token
      */
     constructor(
         address _weth,
@@ -101,16 +132,14 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
         address _oTokenFactory,
         address _gammaController,
         address _marginPool,
-        address _gnosisEasyAuction,
-        address _yearnRegistry
+        address _gnosisEasyAuction
     )
         RibbonVault(
             _weth,
             _usdc,
             _gammaController,
             _marginPool,
-            _gnosisEasyAuction,
-            _yearnRegistry
+            _gnosisEasyAuction
         )
     {
         require(_oTokenFactory != address(0), "!_oTokenFactory");
@@ -119,56 +148,45 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
 
     /**
      * @notice Initializes the OptionVault contract with storage variables.
-     * @param _owner is the owner of the vault with critical permissions
-     * @param _keeper is the keeper of the vault with medium permissions (weekly actions)
-     * @param _feeRecipient is the address to recieve vault performance and management fees
-     * @param _managementFee is the management fee pct.
-     * @param _performanceFee is the perfomance fee pct.
-     * @param _tokenName is the name of the token
-     * @param _tokenSymbol is the symbol of the token
-     * @param _optionsPremiumPricer is the address of the contract with the
-       black-scholes premium calculation logic
-     * @param _strikeSelection is the address of the contract with strike selection logic
-     * @param _premiumDiscount is the vault's discount applied to the premium
-     * @param _auctionDuration is the duration of the gnosis auction
+     * @param _initParams is the struct with vault initialization parameters
      * @param _vaultParams is the struct with vault general data
      */
     function initialize(
-        address _owner,
-        address _keeper,
-        address _feeRecipient,
-        uint256 _managementFee,
-        uint256 _performanceFee,
-        string memory _tokenName,
-        string memory _tokenSymbol,
-        address _optionsPremiumPricer,
-        address _strikeSelection,
-        uint32 _premiumDiscount,
-        uint256 _auctionDuration,
+        InitParams calldata _initParams,
         VaultTheta.VaultParams calldata _vaultParams
     ) external initializer {
         baseInitialize(
-            _owner,
-            _keeper,
-            _feeRecipient,
-            _managementFee,
-            _performanceFee,
-            _tokenName,
-            _tokenSymbol,
+            _initParams._owner,
+            _initParams._keeper,
+            _initParams._feeRecipient,
+            _initParams._managementFee,
+            _initParams._performanceFee,
+            _initParams._tokenName,
+            _initParams._tokenSymbol,
             _vaultParams
         );
-        require(_optionsPremiumPricer != address(0), "!_optionsPremiumPricer");
-        require(_strikeSelection != address(0), "!_strikeSelection");
         require(
-            _premiumDiscount > 0 &&
-                _premiumDiscount < 100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
+            _initParams._optionsPremiumPricer != address(0),
+            "!_optionsPremiumPricer"
+        );
+        require(
+            _initParams._strikeSelection != address(0),
+            "!_strikeSelection"
+        );
+        require(
+            _initParams._premiumDiscount > 0 &&
+                _initParams._premiumDiscount <
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "!_premiumDiscount"
         );
-        require(_auctionDuration >= MIN_AUCTION_DURATION, "!_auctionDuration");
-        optionsPremiumPricer = _optionsPremiumPricer;
-        strikeSelection = _strikeSelection;
-        premiumDiscount = _premiumDiscount;
-        auctionDuration = _auctionDuration;
+        require(
+            _initParams._auctionDuration >= MIN_AUCTION_DURATION,
+            "!_auctionDuration"
+        );
+        optionsPremiumPricer = _initParams._optionsPremiumPricer;
+        strikeSelection = _initParams._strikeSelection;
+        premiumDiscount = _initParams._premiumDiscount;
+        auctionDuration = _initParams._auctionDuration;
     }
 
     /************************************************
@@ -204,6 +222,7 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
             newAuctionDuration >= MIN_AUCTION_DURATION,
             "Invalid auction duration"
         );
+
         emit AuctionDurationSet(auctionDuration, newAuctionDuration);
 
         auctionDuration = newAuctionDuration;
@@ -292,7 +311,6 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
             depositReceipts[msg.sender];
 
         uint256 currentRound = vaultState.round;
-
         require(amount > 0, "!amount");
         require(depositReceipt.round == currentRound, "Invalid round");
 
@@ -307,19 +325,7 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
 
         emit InstantWithdraw(msg.sender, amount, currentRound);
 
-        VaultLifecycleYearn.unwrapYieldToken(
-            amount,
-            vaultParams.asset,
-            address(collateralToken),
-            YEARN_WITHDRAWAL_BUFFER,
-            YEARN_WITHDRAWAL_SLIPPAGE
-        );
-        VaultLifecycleYearn.transferAsset(
-            WETH,
-            vaultParams.asset,
-            msg.sender,
-            amount
-        );
+        transferAsset(msg.sender, amount);
     }
 
     /**
@@ -381,16 +387,12 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
             });
 
         (address otokenAddress, uint256 strikePrice, uint256 delta) =
-            VaultLifecycleYearn.commitAndClose(
-                closeParams,
-                vaultParams,
-                vaultState,
-                address(collateralToken)
-            );
+            VaultLifecycle.commitAndClose(closeParams, vaultParams, vaultState);
 
         emit NewOptionStrikeSelected(strikePrice, delta);
 
         optionState.nextOption = otokenAddress;
+
         uint256 nextOptionReady = block.timestamp.add(DELAY);
         require(
             nextOptionReady <= type(uint32).max,
@@ -426,7 +428,11 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
     function rollToNextOption() external onlyKeeper nonReentrant {
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
-        (address newOption, uint256 queuedWithdrawAmount) =
+        (
+            address newOption,
+            uint256 lockedBalance,
+            uint256 queuedWithdrawAmount
+        ) =
             _rollToNextOption(
                 lastQueuedWithdrawAmount,
                 currQueuedWithdrawShares
@@ -443,31 +449,8 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
 
         currentQueuedWithdrawShares = 0;
 
-        // Locked balance denominated in `collateralToken`
-        // there is a slight imprecision with regards to calculating back from yearn token -> underlying
-        // that stems from miscoordination between ytoken .deposit() amount wrapped and pricePerShare
-        // at that point in time.
-        // ex: if I have 1 eth, deposit 1 eth into yearn vault and calculate value of yearn token balance
-        // denominated in eth (via balance(yearn token) * pricePerShare) we will get 1 eth - 1 wei.
-
-        // We are subtracting `collateralAsset` balance by queuedWithdrawAmount denominated in `collateralAsset` plus
-        // a buffer for withdrawals taking into account slippage from yearn vault
-
-        uint256 lockedBalance =
-            collateralToken.balanceOf(address(this)).sub(
-                DSMath.wdiv(
-                    queuedWithdrawAmount.add(
-                        queuedWithdrawAmount.mul(YEARN_WITHDRAWAL_BUFFER).div(
-                            10000
-                        )
-                    ),
-                    collateralToken.pricePerShare().mul(
-                        VaultLifecycleYearn.decimalShift(
-                            address(collateralToken)
-                        )
-                    )
-                )
-            );
+        ShareMath.assertUint104(lockedBalance);
+        vaultState.lockedAmount = uint104(lockedBalance);
 
         emit OpenShort(newOption, lockedBalance, msg.sender);
 
@@ -535,11 +518,24 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
         vaultState.lockedAmount = uint104(
             uint256(vaultState.lockedAmount).sub(unlockedAssetAmount)
         );
+    }
 
-        // Wrap entire `asset` balance to `collateralToken` balance
-        VaultLifecycleYearn.wrapToYieldToken(
-            vaultParams.asset,
-            address(collateralToken)
+    /**
+     * @notice Recovery function that returns an ERC20 token to the recipient
+     * @param token is the ERC20 token to recover from the vault
+     * @param recipient is the recipient of the recovered tokens
+     */
+    function recoverTokens(address token, address recipient)
+        external
+        onlyOwner
+    {
+        require(token != vaultParams.asset, "Vault asset not recoverable");
+        require(token != address(this), "Vault share not recoverable");
+        require(recipient != address(this), "Recipient cannot be vault");
+
+        IERC20(token).safeTransfer(
+            recipient,
+            IERC20(token).balanceOf(address(this))
         );
     }
 

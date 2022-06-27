@@ -16,11 +16,11 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import {Vault} from "../../../libraries/Vault/Vault.sol";
-import {VaultTheta} from "../../../libraries/Vault/VaultTheta.sol";
-import {VaultLifecycle} from "../../../libraries/VaultLifecycle.sol";
-import {ShareMath} from "../../../libraries/ShareMath.sol";
-import {IWETH} from "../../../interfaces/IWETH.sol";
+import {Vault} from "../../../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../../../libraries/Vault/VaultTheta.sol";
+import {VaultLifecycle} from "../../../../libraries/VaultLifecycle.sol";
+import {ShareMath} from "../../../../libraries/ShareMath.sol";
+import {IWETH} from "../../../../interfaces/IWETH.sol";
 
 contract RibbonVault is
     ReentrancyGuardUpgradeable,
