@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.4;
-import {Vault} from "../libraries/Vault.sol";
+import {VaultTheta} from "../libraries/Vault/VaultTheta.sol";
 
 interface IRibbonVault {
     function deposit(uint256 amount) external;
@@ -11,7 +11,10 @@ interface IRibbonVault {
 
     function depositFor(uint256 amount, address creditor) external;
 
-    function vaultParams() external view returns (Vault.VaultParams memory);
+    function vaultParams()
+        external
+        view
+        returns (VaultTheta.VaultParams memory);
 }
 
 interface IStrikeSelection {

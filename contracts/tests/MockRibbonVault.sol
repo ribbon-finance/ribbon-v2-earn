@@ -3,10 +3,10 @@ pragma solidity =0.8.4;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IOptionsPurchaseQueue} from "../interfaces/IOptionsPurchaseQueue.sol";
-import {Vault} from "../libraries/Vault.sol";
+import {VaultTheta} from "../libraries/Vault/VaultTheta.sol";
 
 contract MockRibbonVault {
-    Vault.VaultParams public vaultParams;
+    VaultTheta.VaultParams public vaultParams;
 
     address public currentOption;
 

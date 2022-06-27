@@ -11,7 +11,8 @@ import {ISwap} from "../../interfaces/ISwap.sol";
 import {
     RibbonThetaVaultStorage
 } from "../../storage/RibbonThetaVaultStorage.sol";
-import {Vault} from "../../libraries/Vault.sol";
+import {Vault} from "../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../libraries/Vault/VaultTheta.sol";
 import {
     VaultLifecycleWithSwap
 } from "../../libraries/VaultLifecycleWithSwap.sol";
@@ -147,7 +148,7 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
      */
     function initialize(
         InitParams calldata _initParams,
-        Vault.VaultParams calldata _vaultParams
+        VaultTheta.VaultParams calldata _vaultParams
     ) external initializer {
         baseInitialize(
             _initParams._owner,
@@ -170,7 +171,7 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
         require(
             _initParams._premiumDiscount > 0 &&
                 _initParams._premiumDiscount <
-                100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "!_premiumDiscount"
         );
 
@@ -193,7 +194,8 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
     {
         require(
             newPremiumDiscount > 0 &&
-                newPremiumDiscount <= 100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
+                newPremiumDiscount <=
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "Invalid discount"
         );
 

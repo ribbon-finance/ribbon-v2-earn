@@ -6,7 +6,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Vault} from "./Vault.sol";
+import {Vault} from "./Vault/Vault.sol";
+import {VaultTheta} from "./Vault/VaultTheta.sol";
 import {ShareMath} from "./ShareMath.sol";
 import {IStrikeSelection} from "../interfaces/IRibbon.sol";
 import {GnosisAuction} from "./GnosisAuction.sol";
@@ -50,7 +51,7 @@ library VaultLifecycleWithSwap {
      */
     function commitNextOption(
         CommitParams calldata commitParams,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         Vault.VaultState storage vaultState
     )
         external
@@ -100,7 +101,7 @@ library VaultLifecycleWithSwap {
      */
     function verifyOtoken(
         address otokenAddress,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         address collateralAsset,
         address USDC,
         uint256 delay
@@ -272,7 +273,7 @@ library VaultLifecycleWithSwap {
             // MarginCalculatorInterface(0x7A48d10f372b3D7c60f6c9770B91398e4ccfd3C7).getExcessCollateral(vault)
             // to see how much dust (or excess collateral) is left behind.
             mintAmount = depositAmount
-                .mul(10**Vault.OTOKEN_DECIMALS)
+                .mul(10**VaultTheta.OTOKEN_DECIMALS)
                 .mul(10**18) // we use 10**18 to give extra precision
                 .div(oToken.strikePrice().mul(10**(10 + collateralDecimals)));
         } else {
@@ -574,7 +575,7 @@ library VaultLifecycleWithSwap {
      */
     function getOrDeployOtoken(
         CommitParams calldata commitParams,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         address underlying,
         address collateralAsset,
         uint256 strikePrice,
@@ -652,7 +653,7 @@ library VaultLifecycleWithSwap {
 
         // Apply a discount to incentivize arbitraguers
         optionPremium = optionPremium.mul(premiumDiscount).div(
-            100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER
+            100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER
         );
 
         require(
@@ -676,7 +677,7 @@ library VaultLifecycleWithSwap {
         address currentOtoken,
         uint256 currOtokenPremium,
         address swapContract,
-        Vault.VaultParams storage vaultParams
+        VaultTheta.VaultParams storage vaultParams
     ) external returns (uint256 optionAuctionID) {
         require(
             currOtokenPremium <= type(uint96).max,
@@ -748,7 +749,7 @@ library VaultLifecycleWithSwap {
         // Skip if optionsPurchaseQueue is address(0)
         if (optionsPurchaseQueue != address(0)) {
             allocatedOptions = optionsAmount.mul(optionAllocation).div(
-                100 * Vault.OPTION_ALLOCATION_MULTIPLIER
+                100 * VaultTheta.OPTION_ALLOCATION_MULTIPLIER
             );
             allocatedOptions = IOptionsPurchaseQueue(optionsPurchaseQueue)
                 .getOptionsAllocation(address(this), allocatedOptions);
@@ -816,7 +817,7 @@ library VaultLifecycleWithSwap {
         uint256 managementFee,
         string calldata tokenName,
         string calldata tokenSymbol,
-        Vault.VaultParams calldata _vaultParams
+        VaultTheta.VaultParams calldata _vaultParams
     ) external pure {
         require(owner != address(0), "!owner");
         require(keeper != address(0), "!keeper");

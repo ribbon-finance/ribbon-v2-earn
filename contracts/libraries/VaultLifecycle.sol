@@ -3,7 +3,8 @@ pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Vault} from "./Vault.sol";
+import {Vault} from "./Vault/Vault.sol";
+import {VaultTheta} from "./Vault/VaultTheta.sol";
 import {ShareMath} from "./ShareMath.sol";
 import {IStrikeSelection} from "../interfaces/IRibbon.sol";
 import {GnosisAuction} from "./GnosisAuction.sol";
@@ -49,7 +50,7 @@ library VaultLifecycle {
      */
     function commitAndClose(
         CloseParams calldata closeParams,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         Vault.VaultState storage vaultState
     )
         external
@@ -99,7 +100,7 @@ library VaultLifecycle {
      */
     function verifyOtoken(
         address otokenAddress,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         address collateralAsset,
         address USDC,
         uint256 delay
@@ -273,7 +274,7 @@ library VaultLifecycle {
             // MarginCalculatorInterface(0x7A48d10f372b3D7c60f6c9770B91398e4ccfd3C7).getExcessCollateral(vault)
             // to see how much dust (or excess collateral) is left behind.
             mintAmount = depositAmount
-                .mul(10**Vault.OTOKEN_DECIMALS)
+                .mul(10**VaultTheta.OTOKEN_DECIMALS)
                 .mul(10**18) // we use 10**18 to give extra precision
                 .div(oToken.strikePrice().mul(10**(10 + collateralDecimals)));
         } else {
@@ -575,7 +576,7 @@ library VaultLifecycle {
      */
     function getOrDeployOtoken(
         CloseParams calldata closeParams,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         address underlying,
         address collateralAsset,
         uint256 strikePrice,
@@ -653,7 +654,7 @@ library VaultLifecycle {
 
         // Apply a discount to incentivize arbitraguers
         optionPremium = optionPremium.mul(premiumDiscount).div(
-            100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER
+            100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER
         );
 
         require(
@@ -713,7 +714,7 @@ library VaultLifecycle {
      vault of this delta vault
      */
     function claimAuctionOtokens(
-        Vault.AuctionSellOrder calldata auctionSellOrder,
+        VaultTheta.AuctionSellOrder calldata auctionSellOrder,
         address gnosisEasyAuction,
         address counterpartyThetaVault
     ) external {
@@ -743,7 +744,7 @@ library VaultLifecycle {
         // Skip if optionsPurchaseQueue is address(0)
         if (optionsPurchaseQueue != address(0)) {
             allocatedOptions = optionsAmount.mul(optionAllocation).div(
-                100 * Vault.OPTION_ALLOCATION_MULTIPLIER
+                100 * VaultTheta.OPTION_ALLOCATION_MULTIPLIER
             );
             allocatedOptions = IOptionsPurchaseQueue(optionsPurchaseQueue)
                 .getOptionsAllocation(address(this), allocatedOptions);
@@ -802,7 +803,7 @@ library VaultLifecycle {
             // We decode the clearingPriceOrder to find the auction settlement price
             // settlementPrice = clearingPriceOrder.sellAmount / clearingPriceOrder.buyAmount
             return
-                (10**Vault.OTOKEN_DECIMALS)
+                (10**VaultTheta.OTOKEN_DECIMALS)
                     .mul(
                     uint96(uint256(clearingPriceOrder)) // sellAmount
                 )
@@ -829,7 +830,7 @@ library VaultLifecycle {
         uint256 managementFee,
         string calldata tokenName,
         string calldata tokenSymbol,
-        Vault.VaultParams calldata _vaultParams
+        VaultTheta.VaultParams calldata _vaultParams
     ) external pure {
         require(owner != address(0), "!owner");
         require(keeper != address(0), "!keeper");

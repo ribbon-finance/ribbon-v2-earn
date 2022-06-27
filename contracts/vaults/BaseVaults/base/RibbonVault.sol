@@ -16,7 +16,8 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import {Vault} from "../../../libraries/Vault.sol";
+import {Vault} from "../../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../../libraries/Vault/VaultTheta.sol";
 import {VaultLifecycle} from "../../../libraries/VaultLifecycle.sol";
 import {ShareMath} from "../../../libraries/ShareMath.sol";
 import {IWETH} from "../../../interfaces/IWETH.sol";
@@ -46,13 +47,13 @@ contract RibbonVault is
     mapping(address => Vault.Withdrawal) public withdrawals;
 
     /// @notice Vault's parameters like cap, decimals
-    Vault.VaultParams public vaultParams;
+    VaultTheta.VaultParams public vaultParams;
 
     /// @notice Vault's lifecycle state like round and locked amounts
     Vault.VaultState public vaultState;
 
     /// @notice Vault's state of the options sold and the timelocked option
-    Vault.OptionState public optionState;
+    VaultTheta.OptionState public optionState;
 
     /// @notice Fee recipient for the performance and management fees
     address public feeRecipient;
@@ -181,7 +182,7 @@ contract RibbonVault is
         uint256 _performanceFee,
         string memory _tokenName,
         string memory _tokenSymbol,
-        Vault.VaultParams calldata _vaultParams
+        VaultTheta.VaultParams calldata _vaultParams
     ) internal initializer {
         VaultLifecycle.verifyInitializerParams(
             _owner,

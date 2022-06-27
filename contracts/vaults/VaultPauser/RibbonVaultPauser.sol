@@ -6,7 +6,8 @@ import {
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
-import {Vault} from "../../libraries/Vault.sol";
+import {Vault} from "../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../libraries/Vault/VaultTheta.sol";
 import {IRibbonThetaVault} from "../../interfaces/IRibbonThetaVault.sol";
 import {IWETH} from "../../interfaces/IWETH.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
@@ -183,7 +184,8 @@ contract RibbonVaultPauser is Ownable, IVaultPauser {
         require(registeredVaults[_vaultAddress], "Vault is not registered");
 
         // get params and round
-        Vault.VaultParams memory currentParams = currentVault.vaultParams();
+        VaultTheta.VaultParams memory currentParams =
+            currentVault.vaultParams();
         uint256 round = currentVault.vaultState().round;
 
         PauseReceipt storage pauseReceipt =
