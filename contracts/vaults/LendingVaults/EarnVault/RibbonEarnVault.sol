@@ -7,13 +7,12 @@ import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {GnosisAuction} from "../../../libraries/GnosisAuction.sol";
 import {
-    RibbonThetaVaultStorage
-} from "../../../storage/RibbonThetaVaultStorage.sol";
+    RibbonEarnVaultStorage
+} from "../../../storage/RibbonEarnVaultStorage.sol";
 import {Vault} from "../../../libraries/Vault/Vault.sol";
-import {VaultTheta} from "../../../libraries/Vault/VaultTheta.sol";
-import {VaultLifecycle} from "../../../libraries/VaultLifecycle.sol";
+import {VaultEarn} from "../../../libraries/Vault/VaultEarn.sol";
+import {VaultLifecycleEarn} from "../../../libraries/VaultLifecycleEarn.sol";
 import {ShareMath} from "../../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../../interfaces/ILiquidityGauge.sol";
 import {IVaultPauser} from "../../../interfaces/IVaultPauser.sol";
@@ -22,10 +21,10 @@ import {RibbonVault} from "./base/RibbonVault.sol";
 /**
  * UPGRADEABILITY: Since we use the upgradeable proxy pattern, we must observe
  * the inheritance chain closely.
- * Any changes/appends in storage variable needs to happen in RibbonThetaVaultStorage.
- * RibbonEarnVault should not inherit from any other contract aside from RibbonVault, RibbonThetaVaultStorage
+ * Any changes/appends in storage variable needs to happen in RibbonEarnVaultStorage.
+ * RibbonEarnVault should not inherit from any other contract aside from RibbonVault, RibbonEarnVaultStorage
  */
-contract RibbonEarnVault is RibbonVault, RibbonThetaVaultStorage {
+contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
     using ShareMath for Vault.DepositReceipt;
@@ -34,51 +33,35 @@ contract RibbonEarnVault is RibbonVault, RibbonThetaVaultStorage {
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
 
-    /// @notice oTokenFactory is the factory contract used to spawn otokens. Used to lookup otokens.
-    address public immutable OTOKEN_FACTORY;
+    /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+    address public immutable BORROWER;
 
-    // The minimum duration for an option auction.
-    uint256 private constant MIN_AUCTION_DURATION = 5 minutes;
+    /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
+    address public immutable OPTION_SELLER;
 
     /************************************************
      *  EVENTS
      ***********************************************/
 
-    event OpenShort(
-        address indexed options,
+    event OpenLoan(
         uint256 depositAmount,
         address indexed manager
     );
 
-    event CloseShort(
-        address indexed options,
+    event CloseLoan(
         uint256 withdrawAmount,
         address indexed manager
     );
 
-    event NewOptionStrikeSelected(uint256 strikePrice, uint256 delta);
-
-    event PremiumDiscountSet(
-        uint256 premiumDiscount,
-        uint256 newPremiumDiscount
-    );
-
-    event AuctionDurationSet(
-        uint256 auctionDuration,
-        uint256 newAuctionDuration
+    event PurchaseOption(
+        uint256 amount,
+        address indexed manager
     );
 
     event InstantWithdraw(
         address indexed account,
         uint256 amount,
         uint256 round
-    );
-
-    event InitiateGnosisAuction(
-        address indexed auctioningToken,
-        address indexed biddingToken,
-        uint256 auctionCounter,
-        address indexed manager
     );
 
     /************************************************
@@ -93,11 +76,6 @@ contract RibbonEarnVault is RibbonVault, RibbonThetaVaultStorage {
      * @param _performanceFee is the perfomance fee pct.
      * @param _tokenName is the name of the token
      * @param _tokenSymbol is the symbol of the token
-     * @param _optionsPremiumPricer is the address of the contract with the
-       black-scholes premium calculation logic
-     * @param _strikeSelection is the address of the contract with strike selection logic
-     * @param _premiumDiscount is the vault's discount applied to the premium
-     * @param _auctionDuration is the duration of the gnosis auction
      */
     struct InitParams {
         address _owner;
@@ -107,10 +85,6 @@ contract RibbonEarnVault is RibbonVault, RibbonThetaVaultStorage {
         uint256 _performanceFee;
         string _tokenName;
         string _tokenSymbol;
-        address _optionsPremiumPricer;
-        address _strikeSelection;
-        uint32 _premiumDiscount;
-        uint256 _auctionDuration;
     }
 
     /************************************************
@@ -121,30 +95,22 @@ contract RibbonEarnVault is RibbonVault, RibbonThetaVaultStorage {
      * @notice Initializes the contract with immutable variables
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
-     * @param _oTokenFactory is the contract address for minting new opyn option types (strikes, asset, expiry)
-     * @param _gammaController is the contract address for opyn actions
-     * @param _marginPool is the contract address for providing collateral to opyn
-     * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
+     * @param _borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+     * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
      */
     constructor(
         address _weth,
         address _usdc,
-        address _oTokenFactory,
-        address _gammaController,
-        address _marginPool,
-        address _gnosisEasyAuction
+        address _borrower,
+        address _optionSeller
     )
         RibbonVault(
             _weth,
             _usdc,
-            _gammaController,
-            _marginPool,
-            _gnosisEasyAuction
+            _borrower,
+            _optionSeller
         )
-    {
-        require(_oTokenFactory != address(0), "!_oTokenFactory");
-        OTOKEN_FACTORY = _oTokenFactory;
-    }
+    {}
 
     /**
      * @notice Initializes the OptionVault contract with storage variables.
@@ -153,7 +119,7 @@ contract RibbonEarnVault is RibbonVault, RibbonThetaVaultStorage {
      */
     function initialize(
         InitParams calldata _initParams,
-        VaultTheta.VaultParams calldata _vaultParams
+        VaultEarn.VaultParams calldata _vaultParams
     ) external initializer {
         baseInitialize(
             _initParams._owner,
@@ -165,28 +131,6 @@ contract RibbonEarnVault is RibbonVault, RibbonThetaVaultStorage {
             _initParams._tokenSymbol,
             _vaultParams
         );
-        require(
-            _initParams._optionsPremiumPricer != address(0),
-            "!_optionsPremiumPricer"
-        );
-        require(
-            _initParams._strikeSelection != address(0),
-            "!_strikeSelection"
-        );
-        require(
-            _initParams._premiumDiscount > 0 &&
-                _initParams._premiumDiscount <
-                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
-            "!_premiumDiscount"
-        );
-        require(
-            _initParams._auctionDuration >= MIN_AUCTION_DURATION,
-            "!_auctionDuration"
-        );
-        optionsPremiumPricer = _initParams._optionsPremiumPricer;
-        strikeSelection = _initParams._strikeSelection;
-        premiumDiscount = _initParams._premiumDiscount;
-        auctionDuration = _initParams._auctionDuration;
     }
 
     /************************************************

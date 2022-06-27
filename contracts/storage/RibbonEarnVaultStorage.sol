@@ -8,6 +8,8 @@ abstract contract RibbonEarnVaultStorageV1 {
   uint256 public currentQueuedWithdrawShares;
   // Vault Pauser Contract for the vault
   address public vaultPauser;
+  // LiquidityGauge contract for the vault
+  address public liquidityGauge;
 }
 
 // We are following Compound's method of upgrading new contract implementations
