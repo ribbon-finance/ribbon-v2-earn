@@ -16,13 +16,12 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import {Vault} from "../../../libraries/Vault/Vault.sol";
-import {VaultTheta} from "../../../libraries/Vault/VaultTheta.sol";
-import {VaultLifecycle} from "../../../libraries/VaultLifecycle.sol";
-import {ShareMath} from "../../../libraries/ShareMath.sol";
-import {IWETH} from "../../../interfaces/IWETH.sol";
-import {IRETH} from "../../../interfaces/IRETH.sol";
-import {IRETHDepositPool} from "../../../interfaces/IRETHDepositPool.sol";
+import {IWSTETH} from "../../../../interfaces/ISTETH.sol";
+import {Vault} from "../../../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../../../libraries/Vault/VaultTheta.sol";
+import {VaultLifecycle} from "../../../../libraries/VaultLifecycle.sol";
+import {VaultLifecycleSTETH} from "../../../../libraries/VaultLifecycleSTETH.sol";
+import {ShareMath} from "../../../../libraries/ShareMath.sol";
 
 contract RibbonVault is
     ReentrancyGuardUpgradeable,
@@ -70,15 +69,14 @@ contract RibbonVault is
     /// @notice Management fee charged on entire AUM in rollToNextOption. Only charged when there is no loss.
     uint256 public managementFee;
 
-    /// @notice depositETH transactions within 24hr are paused
-    uint256 public lastrETHMintCutoff;
+    /// @notice wstETH vault contract
+    IWSTETH public immutable collateralToken;
 
     // Gap is left to avoid storage collisions. Though RibbonVault is not upgradeable, we add this as a safety measure.
     uint256[30] private ____gap;
 
     // *IMPORTANT* NO NEW STORAGE VARIABLES SHOULD BE ADDED HERE
-    // This is to prevent storage collisions. All storage variables should be appended to RibbonThetaVaultStorage
-    // or RibbonDeltaVaultStorage instead. Read this documentation to learn more:
+    // This is to prevent storage collisions. All storage variables should be appended to RibbonThetaSTETHVaultStorage
     // https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable#modifying-your-contracts
 
     /************************************************
@@ -91,7 +89,10 @@ contract RibbonVault is
     /// @notice USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
     address public immutable USDC;
 
-    /// @notice Deprecated: 15 minute timelock between commitAndClose and rollToNexOption.
+    /// @notice Lido DAO token 0x5a98fcbea516cf06857215779fd812ca3bef1b32
+    address public immutable LDO;
+
+    /// @notice 15 minute timelock between commitAndClose and rollToNexOption.
     uint256 public constant DELAY = 0;
 
     /// @notice 7 day period between each options sale.
@@ -115,6 +116,9 @@ contract RibbonVault is
     // https://github.com/gnosis/ido-contracts/blob/main/contracts/EasyAuction.sol
     address public immutable GNOSIS_EASY_AUCTION;
 
+    /// @notice STETH contract address
+    address public immutable STETH;
+
     /************************************************
      *  EVENTS
      ***********************************************/
@@ -130,9 +134,7 @@ contract RibbonVault is
     event Redeem(address indexed account, uint256 share, uint256 round);
 
     event ManagementFeeSet(uint256 managementFee, uint256 newManagementFee);
-
     event PerformanceFeeSet(uint256 performanceFee, uint256 newPerformanceFee);
-
     event CapSet(uint256 oldCap, uint256 newCap);
 
     event Withdraw(address indexed account, uint256 amount, uint256 shares);
@@ -152,6 +154,8 @@ contract RibbonVault is
      * @notice Initializes the contract with immutable variables
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
+     * @param _wsteth is the wstETH contract
+     * @param _ldo is the LDO contract
      * @param _gammaController is the contract address for opyn actions
      * @param _marginPool is the contract address for providing collateral to opyn
      * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
@@ -159,21 +163,30 @@ contract RibbonVault is
     constructor(
         address _weth,
         address _usdc,
+        address _wsteth,
+        address _ldo,
         address _gammaController,
         address _marginPool,
         address _gnosisEasyAuction
     ) {
         require(_weth != address(0), "!_weth");
         require(_usdc != address(0), "!_usdc");
+        require(_wsteth != address(0), "!_wsteth");
+        require(_ldo != address(0), "!_ldo");
+
         require(_gnosisEasyAuction != address(0), "!_gnosisEasyAuction");
         require(_gammaController != address(0), "!_gammaController");
         require(_marginPool != address(0), "!_marginPool");
 
         WETH = _weth;
         USDC = _usdc;
+        LDO = _ldo;
+        STETH = IWSTETH(_wsteth).stETH();
+
         GAMMA_CONTROLLER = _gammaController;
         MARGIN_POOL = _marginPool;
         GNOSIS_EASY_AUCTION = _gnosisEasyAuction;
+        collateralToken = IWSTETH(_wsteth);
     }
 
     /**
@@ -214,8 +227,7 @@ contract RibbonVault is
         );
         vaultParams = _vaultParams;
 
-        uint256 assetBalance =
-            IERC20(vaultParams.asset).balanceOf(address(this));
+        uint256 assetBalance = totalBalance();
         ShareMath.assertUint104(assetBalance);
         vaultState.lastLockedAmount = uint104(assetBalance);
 
@@ -281,9 +293,7 @@ contract RibbonVault is
             newPerformanceFee < 100 * Vault.FEE_MULTIPLIER,
             "Invalid performance fee"
         );
-
         emit PerformanceFeeSet(performanceFee, newPerformanceFee);
-
         performanceFee = newPerformanceFee;
     }
 
@@ -298,13 +308,6 @@ contract RibbonVault is
         vaultParams.cap = uint104(newCap);
     }
 
-    /**
-     * @notice Sets the new rETH mint cutoff
-     */
-    function updaterETHMintCutoff() external onlyKeeper {
-        lastrETHMintCutoff = block.timestamp;
-    }
-
     /************************************************
      *  DEPOSIT & WITHDRAWALS
      ***********************************************/
@@ -315,69 +318,61 @@ contract RibbonVault is
     function depositETH() external payable nonReentrant {
         require(msg.value > 0, "!value");
 
-        // After minting rETH there is a period of 5760 blocks (~21 hours)
-        // where the minting wallet is not able to transfer any of its rETH tokens.
-        // To allow rollToNexOption to occur we must pause mints
-        require(block.timestamp.sub(lastrETHMintCutoff) >= 1 days, "!cutoff");
+        _depositFor(msg.value, msg.sender, true);
+    }
 
-        uint256 rETHAmount = IRETH(vaultParams.asset).getRethValue(msg.value);
-
-        _depositFor(rETHAmount, msg.sender);
-
-        // Deposit ETH for rETH
-        IRETHDepositPool(0x4D05E3d48a938db4b7a9A59A802D5b45011BDe58).deposit{
-            value: msg.value
-        }();
+    function depositYieldToken(uint256 amount) external {
+        _depositYieldTokenFor(amount, msg.sender);
     }
 
     /**
-     * @notice Deposits the `asset` from msg.sender.
-     * @param amount is the amount of `asset` to deposit
+     * @notice Deposits the `collateralAsset` into the contract and mint vault shares.
+     * @param amount is the amount of `collateralAsset` to deposit
+     * @param creditor is the amount of `collateralAsset` to deposit
      */
-    function deposit(uint256 amount) external nonReentrant {
+    function depositYieldTokenFor(uint256 amount, address creditor) external {
+        require(creditor != address(0), "!creditor");
+        _depositYieldTokenFor(amount, creditor);
+    }
+
+    function _depositYieldTokenFor(uint256 amount, address creditor)
+        internal
+        nonReentrant
+    {
         require(amount > 0, "!amount");
 
-        _depositFor(amount, msg.sender);
+        // stETH transfers suffer from an off-by-1 error
+        _depositFor(amount.sub(1), creditor, false);
 
-        // An approve() by the msg.sender is required beforehand
-        IERC20(vaultParams.asset).safeTransferFrom(
-            msg.sender,
-            address(this),
-            amount
-        );
+        IERC20(STETH).safeTransferFrom(msg.sender, address(this), amount);
     }
 
     /**
      * @notice Deposits the `asset` from msg.sender added to `creditor`'s deposit.
      * @notice Used for vault -> vault deposits on the user's behalf
-     * @param amount is the amount of `asset` to deposit
      * @param creditor is the address that can claim/withdraw deposited amount
      */
-    function depositFor(uint256 amount, address creditor)
-        external
-        nonReentrant
-    {
-        require(amount > 0, "!amount");
-        require(creditor != address(0));
+    function depositFor(address creditor) external payable nonReentrant {
+        require(msg.value > 0, "!value");
+        require(creditor != address(0), "!creditor");
 
-        _depositFor(amount, creditor);
-
-        // An approve() by the msg.sender is required beforehand
-        IERC20(vaultParams.asset).safeTransferFrom(
-            msg.sender,
-            address(this),
-            amount
-        );
+        _depositFor(msg.value, creditor, true);
     }
 
     /**
      * @notice Mints the vault shares to the creditor
      * @param amount is the amount of `asset` deposited
      * @param creditor is the address to receieve the deposit
+     * @param isETH is whether this is a depositETH call
      */
-    function _depositFor(uint256 amount, address creditor) private {
+    function _depositFor(
+        uint256 amount,
+        address creditor,
+        bool isETH
+    ) private {
         uint256 currentRound = vaultState.round;
-        uint256 totalWithDepositedAmount = totalBalance().add(amount);
+        uint256 totalWithDepositedAmount =
+            isETH ? totalBalance() : totalBalance().add(amount);
 
         require(totalWithDepositedAmount <= vaultParams.cap, "Exceed cap");
         require(
@@ -398,7 +393,6 @@ contract RibbonVault is
             );
 
         uint256 depositAmount = amount;
-
         // If we have a pending deposit in the current round, we add on to the pending deposit
         if (currentRound == depositReceipt.round) {
             uint256 newAmount = uint256(depositReceipt.amount).add(amount);
@@ -415,7 +409,6 @@ contract RibbonVault is
 
         uint256 newTotalPending = uint256(vaultState.totalPending).add(amount);
         ShareMath.assertUint128(newTotalPending);
-
         vaultState.totalPending = uint128(newTotalPending);
     }
 
@@ -462,7 +455,7 @@ contract RibbonVault is
 
     /**
      * @notice Completes a scheduled withdrawal from a past round. Uses finalized pps for the round
-     * @return withdrawAmount the current withdrawal amount
+     * @return amountETHOut the current withdrawal amount
      */
     function _completeWithdraw() internal returns (uint256) {
         Vault.Withdrawal storage withdrawal = withdrawals[msg.sender];
@@ -488,12 +481,18 @@ contract RibbonVault is
                 vaultParams.decimals
             );
 
+        IERC20(STETH).safeTransfer(
+            msg.sender,
+            VaultLifecycleSTETH.withdrawStEth(
+                STETH,
+                address(collateralToken),
+                withdrawAmount
+            )
+        );
+
         emit Withdraw(msg.sender, withdrawAmount, withdrawalShares);
 
         _burn(address(this), withdrawalShares);
-
-        require(withdrawAmount > 0, "!withdrawAmount");
-        transferAsset(msg.sender, withdrawAmount);
 
         return withdrawAmount;
     }
@@ -584,43 +583,30 @@ contract RibbonVault is
      * @param lastQueuedWithdrawAmount is old queued withdraw amount
      * @param currentQueuedWithdrawShares is the queued withdraw shares for the current round
      * @return newOption is the new option address
-     * @return lockedBalance is the new balance used to calculate next option purchase size or collateral size
-     * @return queuedWithdrawAmount is the new queued withdraw amount for this round
+     * @return queuedWithdrawAmount is the queued amount for withdrawal
      */
     function _rollToNextOption(
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
-    )
-        internal
-        returns (
-            address newOption,
-            uint256 lockedBalance,
-            uint256 queuedWithdrawAmount
-        )
-    {
+    ) internal returns (address, uint256) {
         require(block.timestamp >= optionState.nextOptionReadyAt, "!ready");
 
-        newOption = optionState.nextOption;
+        address newOption = optionState.nextOption;
         require(newOption != address(0), "!nextOption");
 
-        address recipient = feeRecipient;
-        uint256 mintShares;
-        uint256 performanceFeeInAsset;
-        uint256 totalVaultFee;
-        {
-            uint256 newPricePerShare;
-            (
-                lockedBalance,
-                queuedWithdrawAmount,
-                newPricePerShare,
-                mintShares,
-                performanceFeeInAsset,
-                totalVaultFee
-            ) = VaultLifecycle.rollover(
+        (
+            uint256 newLockedBalanceInETH,
+            uint256 queuedWithdrawAmount,
+            uint256 newPricePerShare,
+            uint256 mintShares,
+            uint256 performanceFeeInAsset,
+            uint256 totalVaultFee
+        ) =
+            VaultLifecycle.rollover(
                 vaultState,
                 VaultLifecycle.RolloverParams(
                     vaultParams.decimals,
-                    IERC20(vaultParams.asset).balanceOf(address(this)),
+                    totalBalance(),
                     totalSupply(),
                     lastQueuedWithdrawAmount,
                     performanceFee,
@@ -629,47 +615,53 @@ contract RibbonVault is
                 )
             );
 
-            optionState.currentOption = newOption;
-            optionState.nextOption = address(0);
+        optionState.currentOption = newOption;
+        optionState.nextOption = address(0);
+
+        {
+            address vaultFeeRecipient = feeRecipient;
+            address collateral = address(collateralToken);
 
             // Finalize the pricePerShare at the end of the round
             uint256 currentRound = vaultState.round;
             roundPricePerShare[currentRound] = newPricePerShare;
 
+            // Wrap entire `asset` balance to `collateralToken` balance
+            VaultLifecycleSTETH.wrapToYieldToken(WETH, collateral, STETH);
+
             emit CollectVaultFees(
                 performanceFeeInAsset,
                 totalVaultFee,
                 currentRound,
-                recipient
+                vaultFeeRecipient
             );
 
             vaultState.totalPending = 0;
             vaultState.round = uint16(currentRound + 1);
+            ShareMath.assertUint104(newLockedBalanceInETH);
+            vaultState.lockedAmount = uint104(newLockedBalanceInETH);
+
+            _mint(address(this), mintShares);
+
+            if (totalVaultFee > 0) {
+                VaultLifecycleSTETH.withdrawYieldAndBaseToken(
+                    collateral,
+                    WETH,
+                    vaultFeeRecipient,
+                    totalVaultFee
+                );
+            }
         }
 
-        _mint(address(this), mintShares);
-
-        if (totalVaultFee > 0) {
-            transferAsset(payable(recipient), totalVaultFee);
-        }
-
-        return (newOption, lockedBalance, queuedWithdrawAmount);
+        return (newOption, queuedWithdrawAmount);
     }
 
-    /**
-     * @notice Helper function to make either an ETH transfer or ERC20 transfer
-     * @param recipient is the receiving address
-     * @param amount is the transfer amount
+    /*
+     * @notice Transfers LDO rewards to feeRecipient
      */
-    function transferAsset(address recipient, uint256 amount) internal {
-        address asset = vaultParams.asset;
-        if (asset == WETH) {
-            IWETH(WETH).withdraw(amount);
-            (bool success, ) = recipient.call{value: amount}("");
-            require(success, "Transfer failed");
-            return;
-        }
-        IERC20(asset).safeTransfer(recipient, amount);
+    function sendLDORewards() external {
+        IERC20 ldo = IERC20(LDO);
+        ldo.safeTransfer(feeRecipient, ldo.balanceOf(address(this)));
     }
 
     /************************************************
@@ -753,10 +745,21 @@ contract RibbonVault is
      * @return total balance of the vault, including the amounts locked in third party protocols
      */
     function totalBalance() public view returns (uint256) {
-        return
-            uint256(vaultState.lockedAmount).add(
-                IERC20(vaultParams.asset).balanceOf(address(this))
+        uint256 wethBalance = IERC20(WETH).balanceOf(address(this));
+        uint256 ethBalance = address(this).balance;
+        uint256 stethFromWsteth =
+            collateralToken.getStETHByWstETH(
+                collateralToken.balanceOf(address(this))
             );
+
+        uint256 stEthBalance = IERC20(STETH).balanceOf(address(this));
+
+        return
+            wethBalance
+                .add(vaultState.lockedAmount)
+                .add(ethBalance)
+                .add(stethFromWsteth)
+                .add(stEthBalance);
     }
 
     /**
@@ -785,4 +788,8 @@ contract RibbonVault is
     function totalPending() external view returns (uint256) {
         return vaultState.totalPending;
     }
+
+    /************************************************
+     *  HELPERS
+     ***********************************************/
 }

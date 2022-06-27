@@ -16,18 +16,18 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import {Vault} from "../../libraries/Vault/Vault.sol";
-import {VaultTheta} from "../../libraries/Vault/VaultTheta.sol";
+import {Vault} from "../../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../../libraries/Vault/VaultTheta.sol";
 import {
     VaultLifecycleTreasury
-} from "../../libraries/VaultLifecycleTreasury.sol";
+} from "../../../libraries/VaultLifecycleTreasury.sol";
 import {
     RibbonTreasuryVaultStorage
-} from "../../storage/RibbonTreasuryVaultStorage.sol";
-import {ShareMath} from "../../libraries/ShareMath.sol";
-import {IWETH} from "../../interfaces/IWETH.sol";
-import {GnosisAuction} from "../../libraries/GnosisAuction.sol";
-import {IERC20Detailed} from "../../interfaces/IERC20Detailed.sol";
+} from "../../../storage/RibbonTreasuryVaultStorage.sol";
+import {ShareMath} from "../../../libraries/ShareMath.sol";
+import {IWETH} from "../../../interfaces/IWETH.sol";
+import {GnosisAuction} from "../../../libraries/GnosisAuction.sol";
+import {IERC20Detailed} from "../../../interfaces/IERC20Detailed.sol";
 
 contract RibbonTreasuryVault is
     ReentrancyGuardUpgradeable,

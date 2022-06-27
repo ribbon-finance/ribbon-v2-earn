@@ -3,31 +3,29 @@ pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {DSMath} from "../../vendor/DSMath.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {GnosisAuction} from "../../libraries/GnosisAuction.sol";
-import {IWSTETH} from "../../interfaces/ISTETH.sol";
-import {Vault} from "../../libraries/Vault/Vault.sol";
-import {VaultTheta} from "../../libraries/Vault/VaultTheta.sol";
-import {VaultLifecycle} from "../../libraries/VaultLifecycle.sol";
-import {VaultLifecycleSTETH} from "../../libraries/VaultLifecycleSTETH.sol";
-import {ShareMath} from "../../libraries/ShareMath.sol";
-import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
-import {RibbonVault} from "./base/RibbonVault.sol";
+
+import {GnosisAuction} from "../../../libraries/GnosisAuction.sol";
 import {
-    RibbonThetaSTETHVaultStorage
-} from "../../storage/RibbonThetaSTETHVaultStorage.sol";
-import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
+    RibbonThetaVaultStorage
+} from "../../../storage/RibbonThetaVaultStorage.sol";
+import {Vault} from "../../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../../libraries/Vault/VaultTheta.sol";
+import {VaultLifecycle} from "../../../libraries/VaultLifecycle.sol";
+import {ShareMath} from "../../../libraries/ShareMath.sol";
+import {ILiquidityGauge} from "../../../interfaces/ILiquidityGauge.sol";
+import {IVaultPauser} from "../../../interfaces/IVaultPauser.sol";
+import {RibbonVault} from "./base/RibbonVault.sol";
 
 /**
  * UPGRADEABILITY: Since we use the upgradeable proxy pattern, we must observe
  * the inheritance chain closely.
- * Any changes/appends in storage variable needs to happen in RibbonThetaSTETHVaultStorage.
- * RibbonThetaSTETHVault should not inherit from any other contract aside from RibbonVault, RibbonThetaSTETHVaultStorage
+ * Any changes/appends in storage variable needs to happen in RibbonThetaVaultStorage.
+ * RibbonThetaVault should not inherit from any other contract aside from RibbonVault, RibbonThetaVaultStorage
  */
-contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
+contract RibbonThetaRETHVault is RibbonVault, RibbonThetaVaultStorage {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
     using ShareMath for Vault.DepositReceipt;
@@ -36,7 +34,7 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
 
-    /// @notice is the factory contract used to spawn otokens. Used to lookup otokens.
+    /// @notice oTokenFactory is the factory contract used to spawn otokens. Used to lookup otokens.
     address public immutable OTOKEN_FACTORY;
 
     // The minimum duration for an option auction.
@@ -84,6 +82,38 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
     );
 
     /************************************************
+     *  STRUCTS
+     ***********************************************/
+
+    /**
+     * @notice Initialization parameters for the vault.
+     * @param _owner is the owner of the vault with critical permissions
+     * @param _feeRecipient is the address to recieve vault performance and management fees
+     * @param _managementFee is the management fee pct.
+     * @param _performanceFee is the perfomance fee pct.
+     * @param _tokenName is the name of the token
+     * @param _tokenSymbol is the symbol of the token
+     * @param _optionsPremiumPricer is the address of the contract with the
+       black-scholes premium calculation logic
+     * @param _strikeSelection is the address of the contract with strike selection logic
+     * @param _premiumDiscount is the vault's discount applied to the premium
+     * @param _auctionDuration is the duration of the gnosis auction
+     */
+    struct InitParams {
+        address _owner;
+        address _keeper;
+        address _feeRecipient;
+        uint256 _managementFee;
+        uint256 _performanceFee;
+        string _tokenName;
+        string _tokenSymbol;
+        address _optionsPremiumPricer;
+        address _strikeSelection;
+        uint32 _premiumDiscount;
+        uint256 _auctionDuration;
+    }
+
+    /************************************************
      *  CONSTRUCTOR & INITIALIZATION
      ***********************************************/
 
@@ -91,8 +121,6 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
      * @notice Initializes the contract with immutable variables
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
-     * @param _wsteth is the LDO contract
-     * @param _ldo is the LDO contract
      * @param _oTokenFactory is the contract address for minting new opyn option types (strikes, asset, expiry)
      * @param _gammaController is the contract address for opyn actions
      * @param _marginPool is the contract address for providing collateral to opyn
@@ -101,8 +129,6 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
     constructor(
         address _weth,
         address _usdc,
-        address _wsteth,
-        address _ldo,
         address _oTokenFactory,
         address _gammaController,
         address _marginPool,
@@ -111,8 +137,6 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
         RibbonVault(
             _weth,
             _usdc,
-            _wsteth,
-            _ldo,
             _gammaController,
             _marginPool,
             _gnosisEasyAuction
@@ -124,56 +148,45 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
 
     /**
      * @notice Initializes the OptionVault contract with storage variables.
-     * @param _owner is the owner of the vault with critical permissions
-     * @param _keeper is the keeper of the vault with medium permissions (weekly actions)
-     * @param _feeRecipient is the address to recieve vault performance and management fees
-     * @param _managementFee is the management fee pct.
-     * @param _performanceFee is the perfomance fee pct.
-     * @param _tokenName is the name of the token
-     * @param _tokenSymbol is the symbol of the token
-     * @param _optionsPremiumPricer is the address of the contract with the
-       black-scholes premium calculation logic
-     * @param _strikeSelection is the address of the contract with strike selection logic
-     * @param _premiumDiscount is the vault's discount applied to the premium
-     * @param _auctionDuration is the duration of the gnosis auction
+     * @param _initParams is the struct with vault initialization parameters
      * @param _vaultParams is the struct with vault general data
      */
     function initialize(
-        address _owner,
-        address _keeper,
-        address _feeRecipient,
-        uint256 _managementFee,
-        uint256 _performanceFee,
-        string memory _tokenName,
-        string memory _tokenSymbol,
-        address _optionsPremiumPricer,
-        address _strikeSelection,
-        uint32 _premiumDiscount,
-        uint256 _auctionDuration,
+        InitParams calldata _initParams,
         VaultTheta.VaultParams calldata _vaultParams
     ) external initializer {
         baseInitialize(
-            _owner,
-            _keeper,
-            _feeRecipient,
-            _managementFee,
-            _performanceFee,
-            _tokenName,
-            _tokenSymbol,
+            _initParams._owner,
+            _initParams._keeper,
+            _initParams._feeRecipient,
+            _initParams._managementFee,
+            _initParams._performanceFee,
+            _initParams._tokenName,
+            _initParams._tokenSymbol,
             _vaultParams
         );
-        require(_optionsPremiumPricer != address(0), "!_optionsPremiumPricer");
-        require(_strikeSelection != address(0), "!_strikeSelection");
         require(
-            _premiumDiscount > 0 &&
-                _premiumDiscount < 100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
+            _initParams._optionsPremiumPricer != address(0),
+            "!_optionsPremiumPricer"
+        );
+        require(
+            _initParams._strikeSelection != address(0),
+            "!_strikeSelection"
+        );
+        require(
+            _initParams._premiumDiscount > 0 &&
+                _initParams._premiumDiscount <
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "!_premiumDiscount"
         );
-        require(_auctionDuration >= MIN_AUCTION_DURATION, "!_auctionDuration");
-        optionsPremiumPricer = _optionsPremiumPricer;
-        strikeSelection = _strikeSelection;
-        premiumDiscount = _premiumDiscount;
-        auctionDuration = _auctionDuration;
+        require(
+            _initParams._auctionDuration >= MIN_AUCTION_DURATION,
+            "!_auctionDuration"
+        );
+        optionsPremiumPricer = _initParams._optionsPremiumPricer;
+        strikeSelection = _initParams._strikeSelection;
+        premiumDiscount = _initParams._premiumDiscount;
+        auctionDuration = _initParams._auctionDuration;
     }
 
     /************************************************
@@ -209,25 +222,34 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
             newAuctionDuration >= MIN_AUCTION_DURATION,
             "Invalid auction duration"
         );
+
         emit AuctionDurationSet(auctionDuration, newAuctionDuration);
+
         auctionDuration = newAuctionDuration;
     }
 
     /**
-     * @notice Sets the new strike selection or options premium pricer contract
-     * @param newContract is the address of the new strike selection or options premium pricer contract
-     * @param isStrikeSelection is whether we are setting the strike selection contract
+     * @notice Sets the new strike selection contract
+     * @param newStrikeSelection is the address of the new strike selection contract
      */
-    function setStrikeSelectionOrPricer(
-        address newContract,
-        bool isStrikeSelection
-    ) external onlyOwner {
-        require(newContract != address(0), "!newContract");
-        if (isStrikeSelection) {
-            strikeSelection = newContract;
-        } else {
-            optionsPremiumPricer = newContract;
-        }
+    function setStrikeSelection(address newStrikeSelection) external onlyOwner {
+        require(newStrikeSelection != address(0), "!newStrikeSelection");
+        strikeSelection = newStrikeSelection;
+    }
+
+    /**
+     * @notice Sets the new options premium pricer contract
+     * @param newOptionsPremiumPricer is the address of the new strike selection contract
+     */
+    function setOptionsPremiumPricer(address newOptionsPremiumPricer)
+        external
+        onlyOwner
+    {
+        require(
+            newOptionsPremiumPricer != address(0),
+            "!newOptionsPremiumPricer"
+        );
+        optionsPremiumPricer = newOptionsPremiumPricer;
     }
 
     /**
@@ -246,6 +268,17 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
      */
     function setLiquidityGauge(address newLiquidityGauge) external onlyOwner {
         liquidityGauge = newLiquidityGauge;
+    }
+
+    /**
+     * @notice Sets the new optionsPurchaseQueue contract for this vault
+     * @param newOptionsPurchaseQueue is the address of the new optionsPurchaseQueue contract
+     */
+    function setOptionsPurchaseQueue(address newOptionsPurchaseQueue)
+        external
+        onlyOwner
+    {
+        optionsPurchaseQueue = newOptionsPurchaseQueue;
     }
 
     /**
@@ -271,14 +304,13 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
 
     /**
      * @notice Withdraws the assets on the vault using the outstanding `DepositReceipt.amount`
-     * @param amount is the amount to withdraw in `asset`
+     * @param amount is the amount to withdraw
      */
-    function withdrawInstantly(uint256 amount, uint256) external nonReentrant {
+    function withdrawInstantly(uint256 amount) external nonReentrant {
         Vault.DepositReceipt storage depositReceipt =
             depositReceipts[msg.sender];
 
         uint256 currentRound = vaultState.round;
-
         require(amount > 0, "!amount");
         require(depositReceipt.round == currentRound, "Invalid round");
 
@@ -291,16 +323,9 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
             uint256(vaultState.totalPending).sub(amount)
         );
 
-        IERC20(STETH).safeTransfer(
-            msg.sender,
-            VaultLifecycleSTETH.withdrawStEth(
-                STETH,
-                address(collateralToken),
-                amount
-            )
-        );
-
         emit InstantWithdraw(msg.sender, amount, currentRound);
+
+        transferAsset(msg.sender, amount);
     }
 
     /**
@@ -362,16 +387,12 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
             });
 
         (address otokenAddress, uint256 strikePrice, uint256 delta) =
-            VaultLifecycleSTETH.commitAndClose(
-                closeParams,
-                vaultParams,
-                vaultState,
-                address(collateralToken)
-            );
+            VaultLifecycle.commitAndClose(closeParams, vaultParams, vaultState);
 
         emit NewOptionStrikeSelected(strikePrice, delta);
 
         optionState.nextOption = otokenAddress;
+
         uint256 nextOptionReady = block.timestamp.add(DELAY);
         require(
             nextOptionReady <= type(uint32).max,
@@ -407,7 +428,11 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
     function rollToNextOption() external onlyKeeper nonReentrant {
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
-        (address newOption, uint256 queuedWithdrawAmount) =
+        (
+            address newOption,
+            uint256 lockedBalance,
+            uint256 queuedWithdrawAmount
+        ) =
             _rollToNextOption(
                 lastQueuedWithdrawAmount,
                 currQueuedWithdrawShares
@@ -424,19 +449,24 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
 
         currentQueuedWithdrawShares = 0;
 
-        // Locked balance denominated in `collateralToken`
-        uint256 lockedBalance =
-            collateralToken.balanceOf(address(this)).sub(
-                collateralToken.getWstETHByStETH(queuedWithdrawAmount)
-            );
+        ShareMath.assertUint104(lockedBalance);
+        vaultState.lockedAmount = uint104(lockedBalance);
 
         emit OpenShort(newOption, lockedBalance, msg.sender);
 
-        VaultLifecycleSTETH.createShort(
-            GAMMA_CONTROLLER,
-            MARGIN_POOL,
+        uint256 optionsMintAmount =
+            VaultLifecycle.createShort(
+                GAMMA_CONTROLLER,
+                MARGIN_POOL,
+                newOption,
+                lockedBalance
+            );
+
+        VaultLifecycle.allocateOptions(
+            optionsPurchaseQueue,
             newOption,
-            lockedBalance
+            optionsMintAmount,
+            VaultLifecycle.QUEUE_OPTION_ALLOCATION
         );
 
         _startAuction();
@@ -465,6 +495,17 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
     }
 
     /**
+     * @notice Sell the allocated options to the purchase queue post auction settlement
+     */
+    function sellOptionsToQueue() external onlyKeeper nonReentrant {
+        VaultLifecycle.sellOptionsToQueue(
+            optionsPurchaseQueue,
+            GNOSIS_EASY_AUCTION,
+            optionAuctionID
+        );
+    }
+
+    /**
      * @notice Burn the remaining oTokens left over from gnosis auction.
      */
     function burnRemainingOTokens() external onlyKeeper nonReentrant {
@@ -475,16 +516,26 @@ contract RibbonThetaSTETHVault is RibbonVault, RibbonThetaSTETHVaultStorage {
             );
 
         vaultState.lockedAmount = uint104(
-            uint256(vaultState.lockedAmount).sub(
-                collateralToken.getStETHByWstETH(unlockedAssetAmount)
-            )
+            uint256(vaultState.lockedAmount).sub(unlockedAssetAmount)
         );
+    }
 
-        // Wrap entire `asset` balance to `collateralToken` balance
-        VaultLifecycleSTETH.wrapToYieldToken(
-            WETH,
-            address(collateralToken),
-            STETH
+    /**
+     * @notice Recovery function that returns an ERC20 token to the recipient
+     * @param token is the ERC20 token to recover from the vault
+     * @param recipient is the recipient of the recovered tokens
+     */
+    function recoverTokens(address token, address recipient)
+        external
+        onlyOwner
+    {
+        require(token != vaultParams.asset, "Vault asset not recoverable");
+        require(token != address(this), "Vault share not recoverable");
+        require(recipient != address(this), "Recipient cannot be vault");
+
+        IERC20(token).safeTransfer(
+            recipient,
+            IERC20(token).balanceOf(address(this))
         );
     }
 
