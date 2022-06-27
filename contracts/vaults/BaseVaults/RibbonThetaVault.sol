@@ -11,7 +11,8 @@ import {GnosisAuction} from "../../libraries/GnosisAuction.sol";
 import {
     RibbonThetaVaultStorage
 } from "../../storage/RibbonThetaVaultStorage.sol";
-import {Vault} from "../../libraries/Vault.sol";
+import {Vault} from "../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../libraries/Vault/VaultTheta.sol";
 import {VaultLifecycle} from "../../libraries/VaultLifecycle.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
@@ -152,7 +153,7 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
      */
     function initialize(
         InitParams calldata _initParams,
-        Vault.VaultParams calldata _vaultParams
+        VaultTheta.VaultParams calldata _vaultParams
     ) external initializer {
         baseInitialize(
             _initParams._owner,
@@ -175,7 +176,7 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
         require(
             _initParams._premiumDiscount > 0 &&
                 _initParams._premiumDiscount <
-                100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "!_premiumDiscount"
         );
         require(
@@ -202,7 +203,8 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
     {
         require(
             newPremiumDiscount > 0 &&
-                newPremiumDiscount <= 100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
+                newPremiumDiscount <=
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "Invalid discount"
         );
 

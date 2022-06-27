@@ -16,7 +16,8 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import {Vault} from "../../libraries/Vault.sol";
+import {Vault} from "../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../libraries/Vault/VaultTheta.sol";
 import {
     VaultLifecycleTreasury
 } from "../../libraries/VaultLifecycleTreasury.sol";
@@ -197,7 +198,7 @@ contract RibbonTreasuryVault is
      */
     function initialize(
         VaultLifecycleTreasury.InitParams calldata _initParams,
-        Vault.VaultParams calldata _vaultParams
+        VaultTheta.VaultParams calldata _vaultParams
     ) external initializer {
         VaultLifecycleTreasury.verifyInitializerParams(
             _initParams,
@@ -330,7 +331,8 @@ contract RibbonTreasuryVault is
     function setPremiumDiscount(uint256 newPremiumDiscount) external onlyOwner {
         require(
             newPremiumDiscount > 0 &&
-                newPremiumDiscount < 100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
+                newPremiumDiscount <
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "Invalid discount"
         );
 

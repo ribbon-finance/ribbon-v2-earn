@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.4;
 import {IRibbonThetaVault} from "../interfaces/IRibbonThetaVault.sol";
-import {Vault} from "../libraries/Vault.sol";
+import {VaultTheta} from "../libraries/Vault/VaultTheta.sol";
 
 abstract contract RibbonDeltaVaultStorageV1 {
     // Ribbon counterparty theta vault
@@ -11,7 +11,7 @@ abstract contract RibbonDeltaVaultStorageV1 {
     // Delta vault equivalent of lockedAmount
     uint256 public balanceBeforePremium;
     // User Id of delta vault in latest gnosis auction
-    Vault.AuctionSellOrder public auctionSellOrder;
+    VaultTheta.AuctionSellOrder public auctionSellOrder;
 }
 
 abstract contract RibbonDeltaVaultStorageV2 {
