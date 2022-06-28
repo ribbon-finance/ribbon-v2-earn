@@ -51,13 +51,10 @@ contract RibbonVault is
     /// @notice Vault's lifecycle state like round and locked amounts
     Vault.VaultState public vaultState;
 
-    /// @notice Vault's state of the options sold and the timelocked option
-    Vault.OptionState public optionState;
-
     /// @notice Fee recipient for the performance and management fees
     address public feeRecipient;
 
-    /// @notice role in charge of weekly vault operations such as rollToNextOption and burnRemainingOTokens
+    /// @notice role in charge of weekly vault operations such as rollToNextEpoch and burnRemainingOTokens
     // no access to critical vault changes
     address public keeper;
 
@@ -67,10 +64,10 @@ contract RibbonVault is
     /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
     address public immutable optionSeller;
 
-    /// @notice Performance fee charged on premiums earned in rollToNextOption. Only charged when there is no loss.
+    /// @notice Performance fee charged on premiums earned in rollToNextEpoch. Only charged when there is no loss.
     uint256 public performanceFee;
 
-    /// @notice Management fee charged on entire AUM in rollToNextOption. Only charged when there is no loss.
+    /// @notice Management fee charged on entire AUM in rollToNextEpoch. Only charged when there is no loss.
     uint256 public managementFee;
 
     // Gap is left to avoid storage collisions. Though RibbonVault is not upgradeable, we add this as a safety measure.
@@ -148,7 +145,7 @@ contract RibbonVault is
     }
 
     /**
-     * @notice Initializes the OptionVault contract with storage variables.
+     * @notice Initializes the EarnVault contract with storage variables.
      */
     function baseInitialize(
         address _owner,
@@ -566,7 +563,7 @@ contract RibbonVault is
     function _rollToNextEpoch(
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
-    ) internal returns (address newOption, uint256 queuedWithdrawAmount) {
+    ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {
         // set next lender alloc
         // remove old lender alloc
         // set next option alloc
