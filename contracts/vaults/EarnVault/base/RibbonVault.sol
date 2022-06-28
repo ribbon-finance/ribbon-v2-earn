@@ -17,7 +17,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 import {Vault} from "../../../../libraries/Vault.sol";
-import {VaultLifecycle} from "../../../../libraries/VaultLifecycle.sol";
+import {VaultLifecycleEarn} from "../../../../libraries/VaultLifecycleEarn.sol";
 import {ShareMath} from "../../../../libraries/ShareMath.sol";
 import {IWETH} from "../../../../interfaces/IWETH.sol";
 
@@ -61,6 +61,12 @@ contract RibbonVault is
     // no access to critical vault changes
     address public keeper;
 
+    /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+    address public immutable borrower;
+
+    /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
+    address public immutable optionSeller;
+
     /// @notice Performance fee charged on premiums earned in rollToNextOption. Only charged when there is no loss.
     uint256 public performanceFee;
 
@@ -85,29 +91,15 @@ contract RibbonVault is
     /// @notice USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
     address public immutable USDC;
 
-    /// @notice Deprecated: 15 minute timelock between commitAndClose and rollToNexOption.
-    uint256 public constant DELAY = 0;
+    /// @notice 1 month period between each lending epoch.
+    uint256 public constant PERIOD = 4 weeks;
 
-    /// @notice 7 day period between each options sale.
-    uint256 public constant PERIOD = 7 days;
+    /// @notice 1 week period between each options purchase.
+    uint256 public constant OPTIONS_PURCHASE_PERIOD = 1 weeks;
 
     // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
     // Dividing by weeks per year requires doing num.mul(FEE_MULTIPLIER).div(WEEKS_PER_YEAR)
     uint256 private constant WEEKS_PER_YEAR = 52142857;
-
-    // GAMMA_CONTROLLER is the top-level contract in Gamma protocol
-    // which allows users to perform multiple actions on their vaults
-    // and positions https://github.com/opynfinance/GammaProtocol/blob/master/contracts/core/Controller.sol
-    address public immutable GAMMA_CONTROLLER;
-
-    // MARGIN_POOL is Gamma protocol's collateral pool.
-    // Needed to approve collateral.safeTransferFrom for minting otokens.
-    // https://github.com/opynfinance/GammaProtocol/blob/master/contracts/core/MarginPool.sol
-    address public immutable MARGIN_POOL;
-
-    // GNOSIS_EASY_AUCTION is Gnosis protocol's contract for initiating auctions and placing bids
-    // https://github.com/gnosis/ido-contracts/blob/main/contracts/EasyAuction.sol
-    address public immutable GNOSIS_EASY_AUCTION;
 
     /************************************************
      *  EVENTS
@@ -146,28 +138,16 @@ contract RibbonVault is
      * @notice Initializes the contract with immutable variables
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
-     * @param _gammaController is the contract address for opyn actions
-     * @param _marginPool is the contract address for providing collateral to opyn
-     * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
      */
     constructor(
         address _weth,
-        address _usdc,
-        address _gammaController,
-        address _marginPool,
-        address _gnosisEasyAuction
+        address _usdc
     ) {
         require(_weth != address(0), "!_weth");
         require(_usdc != address(0), "!_usdc");
-        require(_gnosisEasyAuction != address(0), "!_gnosisEasyAuction");
-        require(_gammaController != address(0), "!_gammaController");
-        require(_marginPool != address(0), "!_marginPool");
 
         WETH = _weth;
         USDC = _usdc;
-        GAMMA_CONTROLLER = _gammaController;
-        MARGIN_POOL = _marginPool;
-        GNOSIS_EASY_AUCTION = _gnosisEasyAuction;
     }
 
     /**
@@ -177,16 +157,20 @@ contract RibbonVault is
         address _owner,
         address _keeper,
         address _feeRecipient,
+        address _borrower,
+        address _optionSeller,
         uint256 _managementFee,
         uint256 _performanceFee,
         string memory _tokenName,
         string memory _tokenSymbol,
         Vault.VaultParams calldata _vaultParams
     ) internal initializer {
-        VaultLifecycle.verifyInitializerParams(
+        VaultLifecycleEarn.verifyInitializerParams(
             _owner,
             _keeper,
             _feeRecipient,
+            _borrower,
+            _optionSeller,
             _performanceFee,
             _managementFee,
             _tokenName,
@@ -202,6 +186,8 @@ contract RibbonVault is
         keeper = _keeper;
 
         feeRecipient = _feeRecipient;
+        borrower = _borrower;
+        optionSeller = _optionSeller;
         performanceFee = _performanceFee;
         managementFee = _managementFee.mul(Vault.FEE_MULTIPLIER).div(
             WEEKS_PER_YEAR
@@ -221,6 +207,22 @@ contract RibbonVault is
      */
     modifier onlyKeeper() {
         require(msg.sender == keeper, "!keeper");
+        _;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the borrower.
+     */
+    modifier onlyBorrower() {
+        require(msg.sender == borrower, "!borrower");
+        _;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the option seller.
+     */
+    modifier onlyOptionSeller() {
+        require(msg.sender == optionSeller, "!optionSeller");
         _;
     }
 
@@ -558,28 +560,26 @@ contract RibbonVault is
 
     /**
      * @notice Helper function that performs most administrative tasks
-     * such as setting next option, minting new shares, getting vault fees, etc.
+     * such as minting new shares, getting vault fees, etc.
      * @param lastQueuedWithdrawAmount is old queued withdraw amount
      * @param currentQueuedWithdrawShares is the queued withdraw shares for the current round
-     * @return newOption is the new option address
      * @return lockedBalance is the new balance used to calculate next option purchase size or collateral size
      * @return queuedWithdrawAmount is the new queued withdraw amount for this round
      */
-    function _rollToNextOption(
+    function _rollToNextEpoch(
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
     )
         internal
         returns (
             address newOption,
-            uint256 lockedBalance,
             uint256 queuedWithdrawAmount
         )
     {
-        require(block.timestamp >= optionState.nextOptionReadyAt, "!ready");
-
-        newOption = optionState.nextOption;
-        require(newOption != address(0), "!nextOption");
+        // set next lender alloc
+        // remove old lender alloc
+        // set next option alloc
+        // remove old option alloc
 
         address recipient = feeRecipient;
         uint256 mintShares;
@@ -594,9 +594,9 @@ contract RibbonVault is
                 mintShares,
                 performanceFeeInAsset,
                 totalVaultFee
-            ) = VaultLifecycle.rollover(
+            ) = VaultLifecycleEarn.rollover(
                 vaultState,
-                VaultLifecycle.RolloverParams(
+                VaultLifecycleEarn.RolloverParams(
                     vaultParams.decimals,
                     IERC20(vaultParams.asset).balanceOf(address(this)),
                     totalSupply(),
@@ -606,9 +606,6 @@ contract RibbonVault is
                     currentQueuedWithdrawShares
                 )
             );
-
-            optionState.currentOption = newOption;
-            optionState.nextOption = address(0);
 
             // Finalize the pricePerShare at the end of the round
             uint256 currentRound = vaultState.round;
@@ -631,7 +628,7 @@ contract RibbonVault is
             transferAsset(payable(recipient), totalVaultFee);
         }
 
-        return (newOption, lockedBalance, queuedWithdrawAmount);
+        return (lockedBalance, queuedWithdrawAmount);
     }
 
     /**
@@ -746,18 +743,6 @@ contract RibbonVault is
 
     function cap() external view returns (uint256) {
         return vaultParams.cap;
-    }
-
-    function nextOptionReadyAt() external view returns (uint256) {
-        return optionState.nextOptionReadyAt;
-    }
-
-    function currentOption() external view returns (address) {
-        return optionState.currentOption;
-    }
-
-    function nextOption() external view returns (address) {
-        return optionState.nextOption;
     }
 
     function totalPending() external view returns (uint256) {
