@@ -2,7 +2,7 @@
 pragma solidity =0.8.4;
 
 import {VaultLifecycle} from "../libraries/VaultLifecycle.sol";
-import {Vault} from "../libraries/Vault.sol";
+import {Vault} from "../libraries/Vault/Vault.sol";
 
 contract TestVaultLifecycle {
     Vault.VaultState public vaultState;

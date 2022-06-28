@@ -10,7 +10,6 @@ import {
     IManualVolatilityOracle
 } from "@ribbon-finance/rvol/contracts/interfaces/IManualVolatilityOracle.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import {Vault} from "../libraries/Vault.sol";
 
 contract DeltaStrikeSelection is Ownable {
     using SafeMath for uint256;
