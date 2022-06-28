@@ -16,10 +16,10 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import {Vault} from "../../../../libraries/Vault.sol";
-import {VaultLifecycleEarn} from "../../../../libraries/VaultLifecycleEarn.sol";
-import {ShareMath} from "../../../../libraries/ShareMath.sol";
-import {IWETH} from "../../../../interfaces/IWETH.sol";
+import {Vault} from "../../../libraries/Vault.sol";
+import {VaultLifecycleEarn} from "../../../libraries/VaultLifecycleEarn.sol";
+import {ShareMath} from "../../../libraries/ShareMath.sol";
+import {IWETH} from "../../../interfaces/IWETH.sol";
 
 contract RibbonVault is
     ReentrancyGuardUpgradeable,
@@ -139,10 +139,7 @@ contract RibbonVault is
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
      */
-    constructor(
-        address _weth,
-        address _usdc
-    ) {
+    constructor(address _weth, address _usdc) {
         require(_weth != address(0), "!_weth");
         require(_usdc != address(0), "!_usdc");
 
@@ -569,13 +566,7 @@ contract RibbonVault is
     function _rollToNextEpoch(
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
-    )
-        internal
-        returns (
-            address newOption,
-            uint256 queuedWithdrawAmount
-        )
-    {
+    ) internal returns (address newOption, uint256 queuedWithdrawAmount) {
         // set next lender alloc
         // remove old lender alloc
         // set next option alloc
