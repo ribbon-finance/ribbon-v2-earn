@@ -17,11 +17,6 @@ export const BLOCK_NUMBER = {
   [CHAINID.AVAX_FUJI]: 2823963,
 };
 
-export enum OPTION_PROTOCOL {
-  GAMMA = 1, // eslint-disable-line no-unused-vars
-  TD = 10, // eslint-disable-line no-unused-vars
-}
-
 export const NULL_ADDR = "0x0000000000000000000000000000000000000000";
 export const PLACEHOLDER_ADDR = "0x0000000000000000000000000000000000000001";
 
