@@ -7,12 +7,14 @@ import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {RibbonEarnVaultStorage} from "../../storage/RibbonEarnVaultStorage.sol";
-import {Vault} from "../../libraries/Vault.sol";
-import {VaultLifecycleEarn} from "../../libraries/VaultLifecycleEarn.sol";
-import {ShareMath} from "../../libraries/ShareMath.sol";
-import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
-import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
+import {
+    RibbonEarnVaultStorage
+} from "../../../storage/RibbonEarnVaultStorage.sol";
+import {Vault} from "../../../libraries/Vault.sol";
+import {VaultLifecycleEarn} from "../../../libraries/VaultLifecycleEarn.sol";
+import {ShareMath} from "../../../libraries/ShareMath.sol";
+import {ILiquidityGauge} from "../../../interfaces/ILiquidityGauge.sol";
+import {IVaultPauser} from "../../../interfaces/IVaultPauser.sol";
 import {RibbonVault} from "./base/RibbonVault.sol";
 
 /**
@@ -30,15 +32,30 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
 
+    /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+    address public immutable BORROWER;
+
+    /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
+    address public immutable OPTION_SELLER;
+
     /************************************************
      *  EVENTS
      ***********************************************/
 
-    event OpenLoan(uint256 depositAmount, address indexed manager);
+    event OpenLoan(
+        uint256 depositAmount,
+        address indexed manager
+    );
 
-    event CloseLoan(uint256 withdrawAmount, address indexed manager);
+    event CloseLoan(
+        uint256 withdrawAmount,
+        address indexed manager
+    );
 
-    event PurchaseOption(uint256 amount, address indexed manager);
+    event PurchaseOption(
+        uint256 amount,
+        address indexed manager
+    );
 
     event InstantWithdraw(
         address indexed account,
@@ -54,8 +71,6 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      * @notice Initialization parameters for the vault.
      * @param _owner is the owner of the vault with critical permissions
      * @param _feeRecipient is the address to recieve vault performance and management fees
-     * @param _borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
-     * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
      * @param _managementFee is the management fee pct.
      * @param _performanceFee is the perfomance fee pct.
      * @param _tokenName is the name of the token
@@ -64,8 +79,6 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     struct InitParams {
         address _owner;
         address _keeper;
-        address _borrower;
-        address _optionSeller;
         address _feeRecipient;
         uint256 _managementFee;
         uint256 _performanceFee;
@@ -81,8 +94,22 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      * @notice Initializes the contract with immutable variables
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
+     * @param _borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+     * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
      */
-    constructor(address _weth, address _usdc) RibbonVault(_weth, _usdc) {}
+    constructor(
+        address _weth,
+        address _usdc,
+        address _borrower,
+        address _optionSeller
+    )
+        RibbonVault(
+            _weth,
+            _usdc,
+            _borrower,
+            _optionSeller
+        )
+    {}
 
     /**
      * @notice Initializes the OptionVault contract with storage variables.
@@ -97,8 +124,6 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
             _initParams._owner,
             _initParams._keeper,
             _initParams._feeRecipient,
-            _initParams._borrower,
-            _initParams._optionSeller,
             _initParams._managementFee,
             _initParams._performanceFee,
             _initParams._tokenName,
@@ -269,7 +294,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     /**
      * @notice Rolls the vault's funds into a new short position.
      */
-    function rollToNextEpoch() external onlyKeeper nonReentrant {
+    function rollToNextOption() external onlyKeeper nonReentrant {
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
         (
@@ -277,7 +302,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
             uint256 lockedBalance,
             uint256 queuedWithdrawAmount
         ) =
-            _rollToNextEpoch(
+            _rollToNextOption(
                 lastQueuedWithdrawAmount,
                 currQueuedWithdrawShares
             );
@@ -314,6 +339,54 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         );
 
         _startAuction();
+    }
+
+    /**
+     * @notice Initiate the gnosis auction.
+     */
+    function startAuction() external onlyKeeper nonReentrant {
+        _startAuction();
+    }
+
+    function _startAuction() private {
+        GnosisAuction.AuctionDetails memory auctionDetails;
+
+        address currentOtoken = optionState.currentOption;
+
+        auctionDetails.oTokenAddress = currentOtoken;
+        auctionDetails.gnosisEasyAuction = GNOSIS_EASY_AUCTION;
+        auctionDetails.asset = vaultParams.asset;
+        auctionDetails.assetDecimals = vaultParams.decimals;
+        auctionDetails.oTokenPremium = currentOtokenPremium;
+        auctionDetails.duration = auctionDuration;
+
+        optionAuctionID = VaultLifecycle.startAuction(auctionDetails);
+    }
+
+    /**
+     * @notice Sell the allocated options to the purchase queue post auction settlement
+     */
+    function sellOptionsToQueue() external onlyKeeper nonReentrant {
+        VaultLifecycle.sellOptionsToQueue(
+            optionsPurchaseQueue,
+            GNOSIS_EASY_AUCTION,
+            optionAuctionID
+        );
+    }
+
+    /**
+     * @notice Burn the remaining oTokens left over from gnosis auction.
+     */
+    function burnRemainingOTokens() external onlyKeeper nonReentrant {
+        uint256 unlockedAssetAmount =
+            VaultLifecycle.burnOtokens(
+                GAMMA_CONTROLLER,
+                optionState.currentOption
+            );
+
+        vaultState.lockedAmount = uint104(
+            uint256(vaultState.lockedAmount).sub(unlockedAssetAmount)
+        );
     }
 
     /**
