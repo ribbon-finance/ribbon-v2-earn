@@ -7,8 +7,7 @@ import {
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
 import {Vault} from "../../libraries/Vault.sol";
-import {Vault} from "../../libraries/Vault.sol";
-import {IRibbonThetaVault} from "../../interfaces/IRibbonThetaVault.sol";
+import {IRibbonEarnVault} from "../../interfaces/IRibbonEarnVault.sol";
 import {IWETH} from "../../interfaces/IWETH.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 
@@ -135,7 +134,7 @@ contract RibbonVaultPauser is Ownable, IVaultPauser {
         override
     {
         address currentVaultAddress = msg.sender;
-        IRibbonThetaVault currentVault = IRibbonThetaVault(currentVaultAddress);
+        IRibbonEarnVault currentVault = IRibbonEarnVault(currentVaultAddress);
 
         // check if vault is registered
         require(
@@ -178,14 +177,13 @@ contract RibbonVaultPauser is Ownable, IVaultPauser {
      * @param _vaultAddress vault's address
      */
     function resumePosition(address _vaultAddress) external override {
-        IRibbonThetaVault currentVault = IRibbonThetaVault(_vaultAddress);
+        IRibbonEarnVault currentVault = IRibbonEarnVault(_vaultAddress);
 
         // check if vault is registered
         require(registeredVaults[_vaultAddress], "Vault is not registered");
 
         // get params and round
-        Vault.VaultParams memory currentParams =
-            currentVault.vaultParams();
+        Vault.VaultParams memory currentParams = currentVault.vaultParams();
         uint256 round = currentVault.vaultState().round;
 
         PauseReceipt storage pauseReceipt =
@@ -233,7 +231,7 @@ contract RibbonVaultPauser is Ownable, IVaultPauser {
      * @param _vaultAddress vault's address to be processed
      */
     function processWithdrawal(address _vaultAddress) external onlyKeeper {
-        IRibbonThetaVault currentVault = IRibbonThetaVault(_vaultAddress);
+        IRibbonEarnVault currentVault = IRibbonEarnVault(_vaultAddress);
         // we can only process withdrawal after closing the previous round
         // hence round should be - 1
         emit ProcessWithdrawal(

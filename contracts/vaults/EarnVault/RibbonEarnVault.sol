@@ -7,14 +7,12 @@ import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {
-    RibbonEarnVaultStorage
-} from "../../../storage/RibbonEarnVaultStorage.sol";
-import {Vault} from "../../../libraries/Vault.sol";
-import {VaultLifecycleEarn} from "../../../libraries/VaultLifecycleEarn.sol";
-import {ShareMath} from "../../../libraries/ShareMath.sol";
-import {ILiquidityGauge} from "../../../interfaces/ILiquidityGauge.sol";
-import {IVaultPauser} from "../../../interfaces/IVaultPauser.sol";
+import {RibbonEarnVaultStorage} from "../../storage/RibbonEarnVaultStorage.sol";
+import {Vault} from "../../libraries/Vault.sol";
+import {VaultLifecycleEarn} from "../../libraries/VaultLifecycleEarn.sol";
+import {ShareMath} from "../../libraries/ShareMath.sol";
+import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
+import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
 import {RibbonVault} from "./base/RibbonVault.sol";
 
 /**
@@ -32,25 +30,15 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
 
-
     /************************************************
      *  EVENTS
      ***********************************************/
 
-    event OpenLoan(
-        uint256 depositAmount,
-        address indexed manager
-    );
+    event OpenLoan(uint256 depositAmount, address indexed manager);
 
-    event CloseLoan(
-        uint256 withdrawAmount,
-        address indexed manager
-    );
+    event CloseLoan(uint256 withdrawAmount, address indexed manager);
 
-    event PurchaseOption(
-        uint256 amount,
-        address indexed manager
-    );
+    event PurchaseOption(uint256 amount, address indexed manager);
 
     event InstantWithdraw(
         address indexed account,
@@ -94,15 +82,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
      */
-    constructor(
-        address _weth,
-        address _usdc
-    )
-        RibbonVault(
-            _weth,
-            _usdc
-        )
-    {}
+    constructor(address _weth, address _usdc) RibbonVault(_weth, _usdc) {}
 
     /**
      * @notice Initializes the OptionVault contract with storage variables.
