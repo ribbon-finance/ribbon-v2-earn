@@ -1,27 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.4;
 
-import {Vault} from "../libraries/Vault/Vault.sol";
-import {VaultTheta} from "../libraries/Vault/VaultTheta.sol";
+import {Vault} from "../libraries/Vault.sol";
 
 interface IRibbonThetaVault {
-    function currentOption() external view returns (address);
-
-    function nextOption() external view returns (address);
-
     function vaultParams()
         external
         view
-        returns (VaultTheta.VaultParams memory);
+        returns (Vault.VaultParams memory);
 
     function vaultState() external view returns (Vault.VaultState memory);
 
     function optionState()
         external
         view
-        returns (VaultTheta.OptionState memory);
-
-    function optionAuctionID() external view returns (uint256);
+        returns (Vault.OptionState memory);
 
     function pricePerShare() external view returns (uint256);
 
@@ -34,8 +27,6 @@ interface IRibbonThetaVault {
     function completeWithdraw() external;
 
     function maxRedeem() external;
-
-    function depositYieldTokenFor(uint256 amount, address creditor) external;
 
     function symbol() external view returns (string calldata);
 }
