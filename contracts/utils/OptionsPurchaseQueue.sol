@@ -10,7 +10,7 @@ import {
 
 import {IOptionsPurchaseQueue} from "../interfaces/IOptionsPurchaseQueue.sol";
 import {IRibbonThetaVault} from "../interfaces/IRibbonThetaVault.sol";
-import {Vault} from "../libraries/Vault.sol";
+import {VaultTheta} from "../libraries/Vault/VaultTheta.sol";
 
 contract OptionsPurchaseQueue is IOptionsPurchaseQueue, Ownable {
     using SafeERC20 for IERC20;
@@ -158,7 +158,7 @@ contract OptionsPurchaseQueue is IOptionsPurchaseQueue, Ownable {
 
         // premiums = optionsAmount * ceilingPrice
         uint256 premiums =
-            (optionsAmount * _ceilingPrice) / (10**Vault.OTOKEN_DECIMALS);
+            (optionsAmount * _ceilingPrice) / (10**VaultTheta.OTOKEN_DECIMALS);
 
         // Add purchase to queue
         purchases[vault].push(
@@ -266,7 +266,7 @@ contract OptionsPurchaseQueue is IOptionsPurchaseQueue, Ownable {
                 // premiums = optionsAmount * settlementPrice
                 uint256 premiums =
                     (optionsAmount * settlementPrice) /
-                        (10**Vault.OTOKEN_DECIMALS);
+                        (10**VaultTheta.OTOKEN_DECIMALS);
 
                 if (premiums < purchaseQueue[i].premiums) {
                     // Transfer leftover premiums back to the buyer
@@ -444,7 +444,8 @@ contract OptionsPurchaseQueue is IOptionsPurchaseQueue, Ownable {
     {
         // premiums = optionsAmount * ceilingPrice
         return
-            (optionsAmount * ceilingPrice[vault]) / (10**Vault.OTOKEN_DECIMALS);
+            (optionsAmount * ceilingPrice[vault]) /
+            (10**VaultTheta.OTOKEN_DECIMALS);
     }
 
     /**

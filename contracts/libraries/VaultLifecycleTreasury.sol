@@ -3,7 +3,8 @@ pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Vault} from "./Vault.sol";
+import {Vault} from "./Vault/Vault.sol";
+import {VaultTheta} from "./Vault/VaultTheta.sol";
 import {ShareMath} from "./ShareMath.sol";
 import {IStrikeSelection} from "../interfaces/IRibbon.sol";
 import {GnosisAuction} from "./GnosisAuction.sol";
@@ -83,7 +84,7 @@ library VaultLifecycleTreasury {
         address optionsPremiumPricer,
         uint256 premiumDiscount,
         CloseParams calldata closeParams,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         Vault.VaultState storage vaultState
     )
         external
@@ -152,7 +153,7 @@ library VaultLifecycleTreasury {
      */
     function verifyOtoken(
         address otokenAddress,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         address collateralAsset,
         address USDC,
         uint256 delay
@@ -345,7 +346,7 @@ library VaultLifecycleTreasury {
             // MarginCalculatorInterface(0x7A48d10f372b3D7c60f6c9770B91398e4ccfd3C7).getExcessCollateral(vault)
             // to see how much dust (or excess collateral) is left behind.
             mintAmount = depositAmount
-                .mul(10**Vault.OTOKEN_DECIMALS)
+                .mul(10**VaultTheta.OTOKEN_DECIMALS)
                 .mul(10**18) // we use 10**18 to give extra precision
                 .div(oToken.strikePrice().mul(10**(10 + collateralDecimals)));
         } else {
@@ -618,7 +619,7 @@ library VaultLifecycleTreasury {
      */
     function getOrDeployOtoken(
         CloseParams calldata closeParams,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         address underlying,
         address collateralAsset,
         uint256 strikePrice,
@@ -710,7 +711,7 @@ library VaultLifecycleTreasury {
      vault of this delta vault
      */
     function claimAuctionOtokens(
-        Vault.AuctionSellOrder calldata auctionSellOrder,
+        VaultTheta.AuctionSellOrder calldata auctionSellOrder,
         address gnosisEasyAuction,
         address counterpartyThetaVault
     ) external {
@@ -728,7 +729,7 @@ library VaultLifecycleTreasury {
      */
     function verifyInitializerParams(
         InitParams calldata _initParams,
-        Vault.VaultParams calldata _vaultParams,
+        VaultTheta.VaultParams calldata _vaultParams,
         uint256 _min_auction_duration
     ) external pure {
         require(_initParams._owner != address(0), "!_owner");
@@ -763,7 +764,7 @@ library VaultLifecycleTreasury {
         require(
             _initParams._premiumDiscount > 0 &&
                 _initParams._premiumDiscount <
-                100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "!_premiumDiscount"
         );
         require(
@@ -787,7 +788,7 @@ library VaultLifecycleTreasury {
      * @notice Gets the next options expiry timestamp, this function should be called
      when there is sufficient guard to ensure valid period
      * @param timestamp is the expiry timestamp of the current option
-     * @param period is no. of days in between option sales. Available periods are: 
+     * @param period is no. of days in between option sales. Available periods are:
      * 7(1w), 14(2w), 30(1m), 90(3m), 180(6m)
      */
     function getNextExpiry(uint256 timestamp, uint256 period)

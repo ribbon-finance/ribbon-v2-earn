@@ -10,7 +10,8 @@ import {DSMath} from "../vendor/DSMath.sol";
 import {IGnosisAuction} from "../interfaces/IGnosisAuction.sol";
 import {IOtoken} from "../interfaces/GammaInterface.sol";
 import {IOptionsPremiumPricer} from "../interfaces/IRibbon.sol";
-import {Vault} from "./Vault.sol";
+import {Vault} from "./Vault/Vault.sol";
+import {VaultTheta} from "./Vault/VaultTheta.sol";
 import {IRibbonThetaVault} from "../interfaces/IRibbonThetaVault.sol";
 
 library GnosisAuction {
@@ -134,12 +135,12 @@ library GnosisAuction {
         sellAmount = bidDetails
             .lockedBalance
             .mul(bidDetails.optionAllocation)
-            .div(100 * Vault.OPTION_ALLOCATION_MULTIPLIER);
+            .div(100 * VaultTheta.OPTION_ALLOCATION_MULTIPLIER);
 
         // divide the `asset` sellAmount by the target premium per oToken to
         // get the number of oTokens to buy (8 decimals)
         buyAmount = sellAmount
-            .mul(10**(bidDetails.assetDecimals.add(Vault.OTOKEN_DECIMALS)))
+            .mul(10**(bidDetails.assetDecimals.add(VaultTheta.OTOKEN_DECIMALS)))
             .div(bidDetails.optionPremium)
             .div(10**bidDetails.assetDecimals);
 
@@ -188,7 +189,7 @@ library GnosisAuction {
     }
 
     function claimAuctionOtokens(
-        Vault.AuctionSellOrder calldata auctionSellOrder,
+        VaultTheta.AuctionSellOrder calldata auctionSellOrder,
         address gnosisEasyAuction,
         address counterpartyThetaVault
     ) internal {
@@ -244,7 +245,7 @@ library GnosisAuction {
 
         // Apply a discount to incentivize arbitraguers
         optionPremium = optionPremium.mul(premiumDiscount).div(
-            100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER
+            100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER
         );
 
         require(

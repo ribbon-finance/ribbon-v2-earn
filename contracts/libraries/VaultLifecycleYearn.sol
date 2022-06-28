@@ -8,7 +8,8 @@ import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {VaultLifecycle} from "./VaultLifecycle.sol";
-import {Vault} from "./Vault.sol";
+import {Vault} from "./Vault/Vault.sol";
+import {VaultTheta} from "./Vault/VaultTheta.sol";
 import {ShareMath} from "./ShareMath.sol";
 import {IYearnVault} from "../interfaces/IYearn.sol";
 import {IWETH} from "../interfaces/IWETH.sol";
@@ -40,7 +41,7 @@ library VaultLifecycleYearn {
      */
     function commitAndClose(
         VaultLifecycle.CloseParams calldata closeParams,
-        Vault.VaultParams storage vaultParams,
+        VaultTheta.VaultParams storage vaultParams,
         Vault.VaultState storage vaultState,
         address collateralAsset
     )
@@ -96,7 +97,7 @@ library VaultLifecycleYearn {
     function rollover(
         uint256 currentShareSupply,
         uint256 currentBalance,
-        Vault.VaultParams calldata vaultParams,
+        VaultTheta.VaultParams calldata vaultParams,
         Vault.VaultState calldata vaultState
     )
         external
@@ -372,7 +373,7 @@ library VaultLifecycleYearn {
 
         // Apply a discount to incentivize arbitraguers
         optionPremium = optionPremium.mul(premiumDiscount).div(
-            100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER
+            100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER
         );
 
         // get the black scholes premium of the option and adjust premium based on

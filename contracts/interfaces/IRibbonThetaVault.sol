@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.4;
 
-import {Vault} from "../libraries/Vault.sol";
+import {Vault} from "../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../libraries/Vault/VaultTheta.sol";
 
 interface IRibbonThetaVault {
     function currentOption() external view returns (address);
 
     function nextOption() external view returns (address);
 
-    function vaultParams() external view returns (Vault.VaultParams memory);
+    function vaultParams()
+        external
+        view
+        returns (VaultTheta.VaultParams memory);
 
     function vaultState() external view returns (Vault.VaultState memory);
 
-    function optionState() external view returns (Vault.OptionState memory);
+    function optionState()
+        external
+        view
+        returns (VaultTheta.OptionState memory);
 
     function optionAuctionID() external view returns (uint256);
 

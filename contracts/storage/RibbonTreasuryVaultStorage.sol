@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.4;
 
-import {Vault} from "../libraries/Vault.sol";
+import {VaultTheta} from "../libraries/Vault/VaultTheta.sol";
+import {Vault} from "../libraries/Vault/Vault.sol";
 
 abstract contract RibbonTreasuryVaultStorageV1 {
     /// @notice Vault's parameters like cap, decimals
-    Vault.VaultParams public vaultParams;
+    VaultTheta.VaultParams public vaultParams;
 
     /// @notice Vault's lifecycle state like round and locked amounts
     Vault.VaultState public vaultState;
 
     /// @notice Vault's state of the options sold and the timelocked option
-    Vault.OptionState public optionState;
+    VaultTheta.OptionState public optionState;
 
     /// @notice Stores the user's pending deposit for the round
     mapping(address => Vault.DepositReceipt) public depositReceipts;

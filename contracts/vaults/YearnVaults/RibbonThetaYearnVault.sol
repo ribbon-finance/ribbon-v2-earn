@@ -8,7 +8,8 @@ import {
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {DSMath} from "../../vendor/DSMath.sol";
 import {GnosisAuction} from "../../libraries/GnosisAuction.sol";
-import {Vault} from "../../libraries/Vault.sol";
+import {Vault} from "../../libraries/Vault/Vault.sol";
+import {VaultTheta} from "../../libraries/Vault/VaultTheta.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {VaultLifecycle} from "../../libraries/VaultLifecycle.sol";
 import {VaultLifecycleYearn} from "../../libraries/VaultLifecycleYearn.sol";
@@ -144,7 +145,7 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
         address _strikeSelection,
         uint32 _premiumDiscount,
         uint256 _auctionDuration,
-        Vault.VaultParams calldata _vaultParams
+        VaultTheta.VaultParams calldata _vaultParams
     ) external initializer {
         baseInitialize(
             _owner,
@@ -160,7 +161,7 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
         require(_strikeSelection != address(0), "!_strikeSelection");
         require(
             _premiumDiscount > 0 &&
-                _premiumDiscount < 100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
+                _premiumDiscount < 100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "!_premiumDiscount"
         );
         require(_auctionDuration >= MIN_AUCTION_DURATION, "!_auctionDuration");
@@ -184,7 +185,8 @@ contract RibbonThetaYearnVault is RibbonVault, RibbonThetaYearnVaultStorage {
     {
         require(
             newPremiumDiscount > 0 &&
-                newPremiumDiscount <= 100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
+                newPremiumDiscount <=
+                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
             "Invalid discount"
         );
 
