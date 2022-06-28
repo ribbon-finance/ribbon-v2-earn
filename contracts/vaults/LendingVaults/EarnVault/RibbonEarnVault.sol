@@ -136,75 +136,22 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     /************************************************
      *  SETTERS
      ***********************************************/
-
-    /**
-     * @notice Sets the new discount on premiums for options we are selling
-     * @param newPremiumDiscount is the premium discount
-     */
-    function setPremiumDiscount(uint256 newPremiumDiscount)
-        external
-        onlyKeeper
-    {
-        require(
-            newPremiumDiscount > 0 &&
-                newPremiumDiscount <=
-                100 * VaultTheta.PREMIUM_DISCOUNT_MULTIPLIER,
-            "Invalid discount"
-        );
-
-        emit PremiumDiscountSet(premiumDiscount, newPremiumDiscount);
-
-        premiumDiscount = newPremiumDiscount;
-    }
-
-    /**
-     * @notice Sets the new auction duration
-     * @param newAuctionDuration is the auction duration
-     */
-    function setAuctionDuration(uint256 newAuctionDuration) external onlyOwner {
-        require(
-            newAuctionDuration >= MIN_AUCTION_DURATION,
-            "Invalid auction duration"
-        );
-
-        emit AuctionDurationSet(auctionDuration, newAuctionDuration);
-
-        auctionDuration = newAuctionDuration;
-    }
-
-    /**
-     * @notice Sets the new strike selection contract
-     * @param newStrikeSelection is the address of the new strike selection contract
-     */
-    function setStrikeSelection(address newStrikeSelection) external onlyOwner {
-        require(newStrikeSelection != address(0), "!newStrikeSelection");
-        strikeSelection = newStrikeSelection;
-    }
-
-    /**
-     * @notice Sets the new options premium pricer contract
-     * @param newOptionsPremiumPricer is the address of the new strike selection contract
-     */
-    function setOptionsPremiumPricer(address newOptionsPremiumPricer)
-        external
-        onlyOwner
-    {
-        require(
-            newOptionsPremiumPricer != address(0),
-            "!newOptionsPremiumPricer"
-        );
-        optionsPremiumPricer = newOptionsPremiumPricer;
-    }
-
-    /**
-     * @notice Optionality to set strike price manually
-     * @param strikePrice is the strike price of the new oTokens (decimals = 8)
-     */
-    function setStrikePrice(uint128 strikePrice) external onlyOwner {
-        require(strikePrice > 0, "!strikePrice");
-        overriddenStrikePrice = strikePrice;
-        lastStrikeOverrideRound = vaultState.round;
-    }
+    //
+    //
+    // /**
+    //  * @notice Sets the new options premium pricer contract
+    //  * @param newOptionsPremiumPricer is the address of the new strike selection contract
+    //  */
+    // function setOptionsPremiumPricer(address newOptionsPremiumPricer)
+    //     external
+    //     onlyOwner
+    // {
+    //     require(
+    //         newOptionsPremiumPricer != address(0),
+    //         "!newOptionsPremiumPricer"
+    //     );
+    //     optionsPremiumPricer = newOptionsPremiumPricer;
+    // }
 
     /**
      * @notice Sets the new liquidityGauge contract for this vault
@@ -212,26 +159,6 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      */
     function setLiquidityGauge(address newLiquidityGauge) external onlyOwner {
         liquidityGauge = newLiquidityGauge;
-    }
-
-    /**
-     * @notice Sets the new optionsPurchaseQueue contract for this vault
-     * @param newOptionsPurchaseQueue is the address of the new optionsPurchaseQueue contract
-     */
-    function setOptionsPurchaseQueue(address newOptionsPurchaseQueue)
-        external
-        onlyOwner
-    {
-        optionsPurchaseQueue = newOptionsPurchaseQueue;
-    }
-
-    /**
-     * @notice Sets oToken Premium
-     * @param minPrice is the new oToken Premium in the units of 10**18
-     */
-    function setMinPrice(uint256 minPrice) external onlyKeeper {
-        require(minPrice > 0, "!minPrice");
-        currentOtokenPremium = minPrice;
     }
 
     /**
@@ -312,7 +239,6 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
 
     /**
      * @notice Sets the next option the vault will be shorting, and closes the existing short.
-     *         This allows all the users to withdraw if the next option is malicious.
      */
     function commitAndClose() external nonReentrant {
         address oldOption = optionState.currentOption;
