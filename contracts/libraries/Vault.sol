@@ -65,6 +65,8 @@ library Vault {
         uint128 queuedWithdrawShares;
         // Last Loan Allocation Date
         uint128 lastEpochTime;
+        // Last Option Purchase Date
+        uint128 lastOptionPurchaseTime;
     }
 
     struct DepositReceipt {
