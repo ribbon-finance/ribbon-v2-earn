@@ -117,6 +117,10 @@ contract RibbonVault is
 
     event CapSet(uint256 oldCap, uint256 newCap);
 
+    event BorrowerSet(address oldBorrower, address newBorrower);
+
+    event OptionSellerSet(address oldOptionSeller, address newOptionSeller);
+
     event NewLoanOptionAllocationSet(
         uint256 oldLoanAllocation,
         uint256 oldOptionAllocation,
@@ -268,6 +272,7 @@ contract RibbonVault is
     function setBorrower(address newBorrower) external onlyOwner {
         require(newBorrower != address(0), "!newBorrower");
         require(newBorrower != borrower, "Must be new borrower");
+        emit BorrowerSet(borrower, newBorrower);
         borrower = newBorrower;
     }
 
@@ -278,6 +283,7 @@ contract RibbonVault is
     function setOptionSeller(address newOptionSeller) external onlyOwner {
         require(newOptionSeller != address(0), "!newOptionSeller");
         require(newOptionSeller != optionSeller, "Must be new option seller");
+        emit OptionSellerSet(optionSeller, newOptionSeller);
         optionSeller = newOptionSeller;
     }
 
@@ -355,6 +361,8 @@ contract RibbonVault is
      * @param _loanTermLength new loan term length
      */
     function setLoanTermLength(uint256 _loanTermLength) external onlyOwner {
+        require(_loanTermLength >= 1 days, "!_loanTermLength");
+
         allocationState.nextLoanTermLength = _loanTermLength;
         emit NewLoanTermLength(
             allocationState.currentLoanTermLength,
@@ -372,7 +380,8 @@ contract RibbonVault is
         onlyOwner
     {
         require(
-            _optionPurchaseFreq <= allocationState.nextLoanTermLength,
+            _optionPurchaseFreq > 0 &&
+                _optionPurchaseFreq <= allocationState.nextLoanTermLength,
             "!_optionPurchaseFreq"
         );
         allocationState.nextOptionPurchaseFreq = _optionPurchaseFreq;
@@ -728,24 +737,20 @@ contract RibbonVault is
      * allocation split, etc.
      */
     function _updateAllocationState() internal {
-        Vault.AllocationState _allocationState = allocationState;
+        Vault.AllocationState memory _allocationState = allocationState;
 
         // Set next loan term length
-        if (
-            _allocationState.nextLoanTermLength !=
-            _allocationState.currentLoanTermLength
-        ) {
+        if (_allocationState.nextLoanTermLength != 0) {
             allocationState.currentLoanTermLength = _allocationState
                 .nextLoanTermLength;
+            allocationState.nextLoanTermLength = 0;
         }
 
         // Set next option purchase frequency
-        if (
-            _allocationState.nextOptionPurchaseFreq !=
-            _allocationState.currentOptionPurchaseFreq
-        ) {
+        if (_allocationState.nextOptionPurchaseFreq != 0) {
             allocationState.currentOptionPurchaseFreq = _allocationState
                 .nextOptionPurchaseFreq;
+            allocationState.nextOptionPurchaseFreq = 0;
         }
 
         // Set next loan allocation from vault in USD
