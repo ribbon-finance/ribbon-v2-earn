@@ -28,13 +28,17 @@ library Vault {
         uint16 nextLoanAllocationPCT;
         // Next Option Purchase Allocation Percent
         uint16 nextOptionAllocationPCT;
-        /// Next option Purchase Frequency
+        // Next Loan Term Length
+        uint32 nextLoanTermLength;
+        // Next Option Purchase Frequency
         uint32 nextOptionPurchaseFreq;
         // Current Loan Allocation Percent
         uint16 currentLoanAllocationPCT;
         // Current Option Purchase Allocation Percent
         uint16 currentOptionAllocationPCT;
-        /// Current option Purchase Frequency
+        // Current Loan Term Length
+        uint32 currentLoanTermLength;
+        // Current Option Purchase Frequency
         uint32 currentOptionPurchaseFreq;
         // Current Loan Allocation in USD
         uint256 currentLoanAllocation;
@@ -57,6 +61,10 @@ library Vault {
         uint128 totalPending;
         // Total amount of queued withdrawal shares from previous rounds (doesn't include the current round)
         uint128 queuedWithdrawShares;
+        // Total amount of queued withdrawal shares from previous rounds (doesn't include the current round)
+        uint128 queuedWithdrawShares;
+        // Last Loan Allocation Date
+        uint128 lastEpochTime;
     }
 
     struct DepositReceipt {

@@ -34,8 +34,6 @@ contract RibbonVault is
      *  NON UPGRADEABLE STORAGE
      ***********************************************/
 
-    uint16 public constant TOTAL_PCT = 10000; // Equals 100%
-
     /// @notice Stores the user's pending deposit for the round
     mapping(address => Vault.DepositReceipt) public depositReceipts;
 
@@ -52,6 +50,9 @@ contract RibbonVault is
 
     /// @notice Vault's lifecycle state like round and locked amounts
     Vault.VaultState public vaultState;
+
+    /// @notice Vault's state of the allocation between lending and buying options
+    Vault.AllocationState public allocationState;
 
     /// @notice Fee recipient for the performance and management fees
     address public feeRecipient;
@@ -76,8 +77,8 @@ contract RibbonVault is
     uint256[30] private ____gap;
 
     // *IMPORTANT* NO NEW STORAGE VARIABLES SHOULD BE ADDED HERE
-    // This is to prevent storage collisions. All storage variables should be appended to RibbonThetaVaultStorage
-    // or RibbonDeltaVaultStorage instead. Read this documentation to learn more:
+    // This is to prevent storage collisions. All storage variables should be appended to RibbonEarnVaultStorage.
+    // Read this documentation to learn more:
     // https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable#modifying-your-contracts
 
     /************************************************
@@ -90,8 +91,7 @@ contract RibbonVault is
     /// @notice USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
     address public immutable USDC;
 
-    /// @notice 1 month period between each lending epoch.
-    uint256 public constant PERIOD = 4 weeks;
+    uint16 public constant TOTAL_PCT = 10000; // Equals 100%
 
     // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
     // Dividing by weeks per year requires doing num.mul(FEE_MULTIPLIER).div(WEEKS_PER_YEAR)
@@ -116,6 +116,23 @@ contract RibbonVault is
     event PerformanceFeeSet(uint256 performanceFee, uint256 newPerformanceFee);
 
     event CapSet(uint256 oldCap, uint256 newCap);
+
+    event NewLoanOptionAllocationSet(
+        uint256 oldLoanAllocation,
+        uint256 oldOptionAllocation,
+        uint256 newLoanAllocation,
+        uint256 newOptionAllocation
+    );
+
+    event NewLoanTermLength(
+        uint256 oldLoanTermLength,
+        uint256 newLoanTermLength
+    );
+
+    event NewOptionPurchaseFrequency(
+        uint256 oldOptionPurchaseFrequency,
+        uint256 newOptionPurchaseFrequency
+    );
 
     event Withdraw(address indexed account, uint256 amount, uint256 shares);
 
@@ -156,7 +173,8 @@ contract RibbonVault is
         uint256 _performanceFee,
         string memory _tokenName,
         string memory _tokenSymbol,
-        Vault.VaultParams calldata _vaultParams
+        Vault.VaultParams calldata _vaultParams,
+        Vault.AllocationState calldata _allocationState
     ) internal initializer {
         VaultLifecycleEarn.verifyInitializerParams(
             _owner,
@@ -186,6 +204,7 @@ contract RibbonVault is
             WEEKS_PER_YEAR
         );
         vaultParams = _vaultParams;
+        allocationState = _allocationState;
 
         uint256 assetBalance =
             IERC20(vaultParams.asset).balanceOf(address(this));
@@ -243,6 +262,26 @@ contract RibbonVault is
     }
 
     /**
+     * @notice Sets the new borrower
+     * @param newBorrower is the address of the new borrower
+     */
+    function setBorrower(address newBorrower) external onlyOwner {
+        require(newBorrower != address(0), "!newBorrower");
+        require(newBorrower != borrower, "Must be new borrower");
+        borrower = newBorrower;
+    }
+
+    /**
+     * @notice Sets the new option seller
+     * @param newOptionSeller is the address of the new option seller
+     */
+    function setOptionSeller(address newOptionSeller) external onlyOwner {
+        require(newOptionSeller != address(0), "!newOptionSeller");
+        require(newOptionSeller != optionSeller, "Must be new option seller");
+        optionSeller = newOptionSeller;
+    }
+
+    /**
      * @notice Sets the management fee for the vault
      * @param newManagementFee is the management fee (6 decimals). ex: 2 * 10 ** 6 = 2%
      */
@@ -285,6 +324,62 @@ contract RibbonVault is
         ShareMath.assertUint104(newCap);
         emit CapSet(vaultParams.cap, newCap);
         vaultParams.cap = uint104(newCap);
+    }
+
+    /**
+     * @notice Sets new loan allocation percentage
+     * @dev Can be called by admin
+     * @param _loanAllocationPCT new allocation for loan
+     */
+    function setLoanAllocationPCT(uint256 _loanAllocationPCT)
+        external
+        onlyOwner
+    {
+        require(_loanAllocationPCT <= TOTAL_PCT, "!_loanAllocationPCT");
+        uint256 nextOptionAllocationPCT = TOTAL_PCT.sub(_loanAllocationPCT);
+
+        emit NewLoanOptionAllocationSet(
+            allocationState.currentLoanAllocationPCT,
+            allocationState.currentOptionAllocationPCT,
+            _loanAllocationPCT,
+            nextOptionAllocationPCT
+        );
+
+        allocationState.nextLoanAllocationPCT = _loanAllocationPCT;
+        allocationState.nextOptionAllocationPCT = nextOptionAllocationPCT;
+    }
+
+    /**
+     * @notice Sets loan term length
+     * @dev Can be called by admin
+     * @param _loanTermLength new loan term length
+     */
+    function setLoanTermLength(uint256 _loanTermLength) external onlyOwner {
+        allocationState.nextLoanTermLength = _loanTermLength;
+        emit NewLoanTermLength(
+            allocationState.currentLoanTermLength,
+            _loanTermLength
+        );
+    }
+
+    /**
+     * @notice Sets option purchase frequency
+     * @dev Can be called by admin
+     * @param _optionPurchaseFreq new option purchase frequency
+     */
+    function setOptionPurchaseFrequency(uint256 _optionPurchaseFreq)
+        external
+        onlyOwner
+    {
+        require(
+            _optionPurchaseFreq <= allocationState.nextLoanTermLength,
+            "!_optionPurchaseFreq"
+        );
+        allocationState.nextOptionPurchaseFreq = _optionPurchaseFreq;
+        emit NewOptionPurchaseFrequency(
+            allocationState.currentOptionPurchaseFreq,
+            _optionPurchaseFreq
+        );
     }
 
     /************************************************
@@ -563,12 +658,13 @@ contract RibbonVault is
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
     ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {
-        require(block.timestamp >= optionState.nextOptionReadyAt, "!ready");
-
-        // set next lender alloc
-        // remove old lender alloc
-        // set next option alloc
-        // remove old option alloc
+        require(
+            block.timestamp >=
+                vaultState.lastEpochTime.add(
+                    allocationState.currentLoanTermLength
+                ),
+            "!ready"
+        );
 
         address recipient = feeRecipient;
         uint256 mintShares;
@@ -609,6 +705,7 @@ contract RibbonVault is
 
             vaultState.totalPending = 0;
             vaultState.round = uint16(currentRound + 1);
+            vaultState.lastEpochTime = block.timestamp;
         }
 
         _mint(address(this), mintShares);
@@ -617,7 +714,61 @@ contract RibbonVault is
             transferAsset(payable(recipient), totalVaultFee);
         }
 
+        _updateAllocationState();
+
         return (lockedBalance, queuedWithdrawAmount);
+    }
+
+    /**
+     * @notice Helper function that updates allocation state
+     * such as loan term length, option purchase frequency, loan / option
+     * allocation split, etc.
+     */
+    function _updateAllocationState() internal {
+        Vault.AllocationState _allocationState = allocationState;
+
+        // Set next loan / option allocation PCT
+        if (
+            _allocationState.nextLoanAllocationPCT !=
+            _allocationState.currentLoanAllocationPCT
+        ) {
+            allocationState.currentLoanAllocationPCT = _allocationState
+                .nextLoanAllocationPCT;
+            allocationState.currentOptionAllocationPCT = _allocationState
+                .nextOptionAllocationPCT;
+        }
+
+        // Set next loan term length
+        if (
+            _allocationState.nextLoanTermLength !=
+            _allocationState.currentLoanTermLength
+        ) {
+            allocationState.currentLoanTermLength = _allocationState
+                .nextLoanTermLength;
+        }
+
+        // Set next option purchase frequency
+        if (
+            _allocationState.nextOptionPurchaseFreq !=
+            _allocationState.currentOptionPurchaseFreq
+        ) {
+            allocationState.currentOptionPurchaseFreq = _allocationState
+                .nextOptionPurchaseFreq;
+        }
+
+        // Set next loan allocation from vault in USD
+        allocationState.currentLoanAllocation = _allocationState
+            .currentLoanAllocationPCT
+            .mul(lockedBalance)
+            .div(TOTAL_PCT);
+        uint8 optionPurchasesPerLoanTerm =
+            _allocationState.currentLoanTermLength.div(
+                _allocationState.nextOptionPurchaseFreq
+            );
+        // Set next option allocation from vault per purchase in USD
+        allocationState.currentOptionAllocation = lockedBalance
+            .sub(_allocationState.currentLoanAllocation)
+            .div(optionPurchasesPerLoanTerm);
     }
 
     /**
