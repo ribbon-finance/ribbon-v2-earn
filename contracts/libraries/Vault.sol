@@ -61,8 +61,6 @@ library Vault {
         uint128 totalPending;
         // Total amount of queued withdrawal shares from previous rounds (doesn't include the current round)
         uint128 queuedWithdrawShares;
-        // Total amount of queued withdrawal shares from previous rounds (doesn't include the current round)
-        uint128 queuedWithdrawShares;
         // Last Loan Allocation Date
         uint128 lastEpochTime;
         // Last Option Purchase Date
