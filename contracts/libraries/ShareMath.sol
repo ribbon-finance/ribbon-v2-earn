@@ -2,7 +2,7 @@
 pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import {Vault} from "./Vault/Vault.sol";
+import {Vault} from "./Vault.sol";
 
 library ShareMath {
     using SafeMath for uint256;
