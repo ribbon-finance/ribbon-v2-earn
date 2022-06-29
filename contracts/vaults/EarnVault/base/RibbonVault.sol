@@ -16,10 +16,10 @@ import {
     ERC20Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import {Vault} from "../../../../libraries/Vault.sol";
-import {VaultLifecycle} from "../../../../libraries/VaultLifecycle.sol";
-import {ShareMath} from "../../../../libraries/ShareMath.sol";
-import {IWETH} from "../../../../interfaces/IWETH.sol";
+import {Vault} from "../../../libraries/Vault.sol";
+import {VaultLifecycleEarn} from "../../../libraries/VaultLifecycleEarn.sol";
+import {ShareMath} from "../../../libraries/ShareMath.sol";
+import {IWETH} from "../../../interfaces/IWETH.sol";
 
 contract RibbonVault is
     ReentrancyGuardUpgradeable,
@@ -51,28 +51,34 @@ contract RibbonVault is
     /// @notice Vault's lifecycle state like round and locked amounts
     Vault.VaultState public vaultState;
 
-    /// @notice Vault's state of the options sold and the timelocked option
-    Vault.OptionState public optionState;
+    /// @notice Vault's state of the allocation between lending and buying options
+    Vault.AllocationState public allocationState;
 
     /// @notice Fee recipient for the performance and management fees
     address public feeRecipient;
 
-    /// @notice role in charge of weekly vault operations such as rollToNextOption and burnRemainingOTokens
+    /// @notice role in charge of weekly vault operations such as rollToNextEpoch and burnRemainingOTokens
     // no access to critical vault changes
     address public keeper;
 
-    /// @notice Performance fee charged on premiums earned in rollToNextOption. Only charged when there is no loss.
+    /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+    address public borrower;
+
+    /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
+    address public optionSeller;
+
+    /// @notice Performance fee charged on premiums earned in rollToNextEpoch. Only charged when there is no loss.
     uint256 public performanceFee;
 
-    /// @notice Management fee charged on entire AUM in rollToNextOption. Only charged when there is no loss.
+    /// @notice Management fee charged on entire AUM in rollToNextEpoch. Only charged when there is no loss.
     uint256 public managementFee;
 
     // Gap is left to avoid storage collisions. Though RibbonVault is not upgradeable, we add this as a safety measure.
     uint256[30] private ____gap;
 
     // *IMPORTANT* NO NEW STORAGE VARIABLES SHOULD BE ADDED HERE
-    // This is to prevent storage collisions. All storage variables should be appended to RibbonThetaVaultStorage
-    // or RibbonDeltaVaultStorage instead. Read this documentation to learn more:
+    // This is to prevent storage collisions. All storage variables should be appended to RibbonEarnVaultStorage.
+    // Read this documentation to learn more:
     // https://docs.openzeppelin.com/upgrades-plugins/1.x/writing-upgradeable#modifying-your-contracts
 
     /************************************************
@@ -85,29 +91,11 @@ contract RibbonVault is
     /// @notice USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
     address public immutable USDC;
 
-    /// @notice Deprecated: 15 minute timelock between commitAndClose and rollToNexOption.
-    uint256 public constant DELAY = 0;
-
-    /// @notice 7 day period between each options sale.
-    uint256 public constant PERIOD = 7 days;
+    uint16 public constant TOTAL_PCT = 10000; // Equals 100%
 
     // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
     // Dividing by weeks per year requires doing num.mul(FEE_MULTIPLIER).div(WEEKS_PER_YEAR)
     uint256 private constant WEEKS_PER_YEAR = 52142857;
-
-    // GAMMA_CONTROLLER is the top-level contract in Gamma protocol
-    // which allows users to perform multiple actions on their vaults
-    // and positions https://github.com/opynfinance/GammaProtocol/blob/master/contracts/core/Controller.sol
-    address public immutable GAMMA_CONTROLLER;
-
-    // MARGIN_POOL is Gamma protocol's collateral pool.
-    // Needed to approve collateral.safeTransferFrom for minting otokens.
-    // https://github.com/opynfinance/GammaProtocol/blob/master/contracts/core/MarginPool.sol
-    address public immutable MARGIN_POOL;
-
-    // GNOSIS_EASY_AUCTION is Gnosis protocol's contract for initiating auctions and placing bids
-    // https://github.com/gnosis/ido-contracts/blob/main/contracts/EasyAuction.sol
-    address public immutable GNOSIS_EASY_AUCTION;
 
     /************************************************
      *  EVENTS
@@ -129,6 +117,27 @@ contract RibbonVault is
 
     event CapSet(uint256 oldCap, uint256 newCap);
 
+    event BorrowerSet(address oldBorrower, address newBorrower);
+
+    event OptionSellerSet(address oldOptionSeller, address newOptionSeller);
+
+    event NewLoanOptionAllocationSet(
+        uint256 oldLoanAllocation,
+        uint256 oldOptionAllocation,
+        uint256 newLoanAllocation,
+        uint256 newOptionAllocation
+    );
+
+    event NewLoanTermLength(
+        uint256 oldLoanTermLength,
+        uint256 newLoanTermLength
+    );
+
+    event NewOptionPurchaseFrequency(
+        uint256 oldOptionPurchaseFrequency,
+        uint256 newOptionPurchaseFrequency
+    );
+
     event Withdraw(address indexed account, uint256 amount, uint256 shares);
 
     event CollectVaultFees(
@@ -146,47 +155,37 @@ contract RibbonVault is
      * @notice Initializes the contract with immutable variables
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
-     * @param _gammaController is the contract address for opyn actions
-     * @param _marginPool is the contract address for providing collateral to opyn
-     * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
      */
-    constructor(
-        address _weth,
-        address _usdc,
-        address _gammaController,
-        address _marginPool,
-        address _gnosisEasyAuction
-    ) {
+    constructor(address _weth, address _usdc) {
         require(_weth != address(0), "!_weth");
         require(_usdc != address(0), "!_usdc");
-        require(_gnosisEasyAuction != address(0), "!_gnosisEasyAuction");
-        require(_gammaController != address(0), "!_gammaController");
-        require(_marginPool != address(0), "!_marginPool");
 
         WETH = _weth;
         USDC = _usdc;
-        GAMMA_CONTROLLER = _gammaController;
-        MARGIN_POOL = _marginPool;
-        GNOSIS_EASY_AUCTION = _gnosisEasyAuction;
     }
 
     /**
-     * @notice Initializes the OptionVault contract with storage variables.
+     * @notice Initializes the EarnVault contract with storage variables.
      */
     function baseInitialize(
         address _owner,
         address _keeper,
         address _feeRecipient,
+        address _borrower,
+        address _optionSeller,
         uint256 _managementFee,
         uint256 _performanceFee,
         string memory _tokenName,
         string memory _tokenSymbol,
-        Vault.VaultParams calldata _vaultParams
+        Vault.VaultParams calldata _vaultParams,
+        Vault.AllocationState calldata _allocationState
     ) internal initializer {
-        VaultLifecycle.verifyInitializerParams(
+        VaultLifecycleEarn.verifyInitializerParams(
             _owner,
             _keeper,
             _feeRecipient,
+            _borrower,
+            _optionSeller,
             _performanceFee,
             _managementFee,
             _tokenName,
@@ -202,11 +201,14 @@ contract RibbonVault is
         keeper = _keeper;
 
         feeRecipient = _feeRecipient;
+        borrower = _borrower;
+        optionSeller = _optionSeller;
         performanceFee = _performanceFee;
         managementFee = _managementFee.mul(Vault.FEE_MULTIPLIER).div(
             WEEKS_PER_YEAR
         );
         vaultParams = _vaultParams;
+        allocationState = _allocationState;
 
         uint256 assetBalance =
             IERC20(vaultParams.asset).balanceOf(address(this));
@@ -221,6 +223,22 @@ contract RibbonVault is
      */
     modifier onlyKeeper() {
         require(msg.sender == keeper, "!keeper");
+        _;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the borrower.
+     */
+    modifier onlyBorrower() {
+        require(msg.sender == borrower, "!borrower");
+        _;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the option seller.
+     */
+    modifier onlyOptionSeller() {
+        require(msg.sender == optionSeller, "!optionSeller");
         _;
     }
 
@@ -245,6 +263,28 @@ contract RibbonVault is
         require(newFeeRecipient != address(0), "!newFeeRecipient");
         require(newFeeRecipient != feeRecipient, "Must be new feeRecipient");
         feeRecipient = newFeeRecipient;
+    }
+
+    /**
+     * @notice Sets the new borrower
+     * @param newBorrower is the address of the new borrower
+     */
+    function setBorrower(address newBorrower) external onlyOwner {
+        require(newBorrower != address(0), "!newBorrower");
+        require(newBorrower != borrower, "Must be new borrower");
+        emit BorrowerSet(borrower, newBorrower);
+        borrower = newBorrower;
+    }
+
+    /**
+     * @notice Sets the new option seller
+     * @param newOptionSeller is the address of the new option seller
+     */
+    function setOptionSeller(address newOptionSeller) external onlyOwner {
+        require(newOptionSeller != address(0), "!newOptionSeller");
+        require(newOptionSeller != optionSeller, "Must be new option seller");
+        emit OptionSellerSet(optionSeller, newOptionSeller);
+        optionSeller = newOptionSeller;
     }
 
     /**
@@ -290,6 +330,65 @@ contract RibbonVault is
         ShareMath.assertUint104(newCap);
         emit CapSet(vaultParams.cap, newCap);
         vaultParams.cap = uint104(newCap);
+    }
+
+    /**
+     * @notice Sets new loan allocation percentage
+     * @dev Can be called by admin
+     * @param _loanAllocationPCT new allocation for loan
+     */
+    function setLoanAllocationPCT(uint256 _loanAllocationPCT)
+        external
+        onlyOwner
+    {
+        require(_loanAllocationPCT <= TOTAL_PCT, "!_loanAllocationPCT");
+        uint256 nextOptionAllocationPCT = TOTAL_PCT.sub(_loanAllocationPCT);
+
+        emit NewLoanOptionAllocationSet(
+            allocationState.loanAllocationPCT,
+            allocationState.optionAllocationPCT,
+            _loanAllocationPCT,
+            nextOptionAllocationPCT
+        );
+
+        allocationState.loanAllocationPCT = _loanAllocationPCT;
+        allocationState.optionAllocationPCT = nextOptionAllocationPCT;
+    }
+
+    /**
+     * @notice Sets loan term length
+     * @dev Can be called by admin
+     * @param _loanTermLength new loan term length
+     */
+    function setLoanTermLength(uint256 _loanTermLength) external onlyOwner {
+        require(_loanTermLength >= 1 days, "!_loanTermLength");
+
+        allocationState.nextLoanTermLength = _loanTermLength;
+        emit NewLoanTermLength(
+            allocationState.currentLoanTermLength,
+            _loanTermLength
+        );
+    }
+
+    /**
+     * @notice Sets option purchase frequency
+     * @dev Can be called by admin
+     * @param _optionPurchaseFreq new option purchase frequency
+     */
+    function setOptionPurchaseFrequency(uint256 _optionPurchaseFreq)
+        external
+        onlyOwner
+    {
+        require(
+            _optionPurchaseFreq > 0 &&
+                _optionPurchaseFreq <= allocationState.nextLoanTermLength,
+            "!_optionPurchaseFreq"
+        );
+        allocationState.nextOptionPurchaseFreq = _optionPurchaseFreq;
+        emit NewOptionPurchaseFrequency(
+            allocationState.currentOptionPurchaseFreq,
+            _optionPurchaseFreq
+        );
     }
 
     /************************************************
@@ -558,28 +657,23 @@ contract RibbonVault is
 
     /**
      * @notice Helper function that performs most administrative tasks
-     * such as setting next option, minting new shares, getting vault fees, etc.
+     * such as minting new shares, getting vault fees, etc.
      * @param lastQueuedWithdrawAmount is old queued withdraw amount
      * @param currentQueuedWithdrawShares is the queued withdraw shares for the current round
-     * @return newOption is the new option address
      * @return lockedBalance is the new balance used to calculate next option purchase size or collateral size
      * @return queuedWithdrawAmount is the new queued withdraw amount for this round
      */
-    function _rollToNextOption(
+    function _rollToNextEpoch(
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
-    )
-        internal
-        returns (
-            address newOption,
-            uint256 lockedBalance,
-            uint256 queuedWithdrawAmount
-        )
-    {
-        require(block.timestamp >= optionState.nextOptionReadyAt, "!ready");
-
-        newOption = optionState.nextOption;
-        require(newOption != address(0), "!nextOption");
+    ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {
+        require(
+            block.timestamp >=
+                vaultState.lastEpochTime.add(
+                    allocationState.currentLoanTermLength
+                ),
+            "!ready"
+        );
 
         address recipient = feeRecipient;
         uint256 mintShares;
@@ -594,9 +688,9 @@ contract RibbonVault is
                 mintShares,
                 performanceFeeInAsset,
                 totalVaultFee
-            ) = VaultLifecycle.rollover(
+            ) = VaultLifecycleEarn.rollover(
                 vaultState,
-                VaultLifecycle.RolloverParams(
+                VaultLifecycleEarn.RolloverParams(
                     vaultParams.decimals,
                     IERC20(vaultParams.asset).balanceOf(address(this)),
                     totalSupply(),
@@ -606,9 +700,6 @@ contract RibbonVault is
                     currentQueuedWithdrawShares
                 )
             );
-
-            optionState.currentOption = newOption;
-            optionState.nextOption = address(0);
 
             // Finalize the pricePerShare at the end of the round
             uint256 currentRound = vaultState.round;
@@ -623,6 +714,10 @@ contract RibbonVault is
 
             vaultState.totalPending = 0;
             vaultState.round = uint16(currentRound + 1);
+            vaultState.lastEpochTime =
+                block.timestamp -
+                (block.timestamp % (24 hours)) +
+                (8 hours);
         }
 
         _mint(address(this), mintShares);
@@ -631,7 +726,46 @@ contract RibbonVault is
             transferAsset(payable(recipient), totalVaultFee);
         }
 
-        return (newOption, lockedBalance, queuedWithdrawAmount);
+        _updateAllocationState();
+
+        return (lockedBalance, queuedWithdrawAmount);
+    }
+
+    /**
+     * @notice Helper function that updates allocation state
+     * such as loan term length, option purchase frequency, loan / option
+     * allocation split, etc.
+     */
+    function _updateAllocationState() internal {
+        Vault.AllocationState memory _allocationState = allocationState;
+
+        // Set next loan term length
+        if (_allocationState.nextLoanTermLength != 0) {
+            allocationState.currentLoanTermLength = _allocationState
+                .nextLoanTermLength;
+            allocationState.nextLoanTermLength = 0;
+        }
+
+        // Set next option purchase frequency
+        if (_allocationState.nextOptionPurchaseFreq != 0) {
+            allocationState.currentOptionPurchaseFreq = _allocationState
+                .nextOptionPurchaseFreq;
+            allocationState.nextOptionPurchaseFreq = 0;
+        }
+
+        // Set next loan allocation from vault in USD
+        allocationState.loanAllocation = _allocationState
+            .loanAllocationPCT
+            .mul(lockedBalance)
+            .div(TOTAL_PCT);
+        uint8 optionPurchasesPerLoanTerm =
+            _allocationState.currentLoanTermLength.div(
+                _allocationState.nextOptionPurchaseFreq
+            );
+        // Set next option allocation from vault per purchase in USD
+        allocationState.optionAllocation = lockedBalance
+            .sub(_allocationState.loanAllocation)
+            .div(optionPurchasesPerLoanTerm);
     }
 
     /**
@@ -746,18 +880,6 @@ contract RibbonVault is
 
     function cap() external view returns (uint256) {
         return vaultParams.cap;
-    }
-
-    function nextOptionReadyAt() external view returns (uint256) {
-        return optionState.nextOptionReadyAt;
-    }
-
-    function currentOption() external view returns (address) {
-        return optionState.currentOption;
-    }
-
-    function nextOption() external view returns (address) {
-        return optionState.nextOption;
     }
 
     function totalPending() external view returns (uint256) {

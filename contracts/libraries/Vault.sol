@@ -22,7 +22,26 @@ library Vault {
         // Vault cap
         uint104 cap;
     }
-    
+
+    struct AllocationState {
+        // Next Loan Term Length
+        uint32 nextLoanTermLength;
+        // Next Option Purchase Frequency
+        uint32 nextOptionPurchaseFreq;
+        // Current Loan Term Length
+        uint32 currentLoanTermLength;
+        // Current Option Purchase Frequency
+        uint32 currentOptionPurchaseFreq;
+        // Current Loan Allocation Percent
+        uint16 loanAllocationPCT;
+        // Current Option Purchase Allocation Percent
+        uint16 optionAllocationPCT;
+        // Loan Allocation in USD
+        uint256 loanAllocation;
+        // Option Purchase Allocation per Purchase in USD
+        uint256 optionAllocation;
+    }
+
     struct VaultState {
         // 32 byte slot 1
         //  Current round number. `round` represents the number of `period`s elapsed.
@@ -38,6 +57,10 @@ library Vault {
         uint128 totalPending;
         // Total amount of queued withdrawal shares from previous rounds (doesn't include the current round)
         uint128 queuedWithdrawShares;
+        // Last Loan Allocation Date
+        uint128 lastEpochTime;
+        // Last Option Purchase Date
+        uint128 lastOptionPurchaseTime;
     }
 
     struct DepositReceipt {
