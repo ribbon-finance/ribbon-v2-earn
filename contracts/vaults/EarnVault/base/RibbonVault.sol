@@ -215,6 +215,8 @@ contract RibbonVault is
         ShareMath.assertUint104(assetBalance);
         vaultState.lastLockedAmount = uint104(assetBalance);
 
+        _updateAllocationState();
+
         vaultState.round = 1;
     }
 
