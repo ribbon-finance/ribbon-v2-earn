@@ -339,14 +339,14 @@ contract RibbonVault is
         uint256 nextOptionAllocationPCT = TOTAL_PCT.sub(_loanAllocationPCT);
 
         emit NewLoanOptionAllocationSet(
-            allocationState.currentLoanAllocationPCT,
-            allocationState.currentOptionAllocationPCT,
+            allocationState.loanAllocationPCT,
+            allocationState.optionAllocationPCT,
             _loanAllocationPCT,
             nextOptionAllocationPCT
         );
 
-        allocationState.nextLoanAllocationPCT = _loanAllocationPCT;
-        allocationState.nextOptionAllocationPCT = nextOptionAllocationPCT;
+        allocationState.loanAllocationPCT = _loanAllocationPCT;
+        allocationState.optionAllocationPCT = nextOptionAllocationPCT;
     }
 
     /**
@@ -726,17 +726,6 @@ contract RibbonVault is
      */
     function _updateAllocationState() internal {
         Vault.AllocationState _allocationState = allocationState;
-
-        // Set next loan / option allocation PCT
-        if (
-            _allocationState.nextLoanAllocationPCT !=
-            _allocationState.currentLoanAllocationPCT
-        ) {
-            allocationState.currentLoanAllocationPCT = _allocationState
-                .nextLoanAllocationPCT;
-            allocationState.currentOptionAllocationPCT = _allocationState
-                .nextOptionAllocationPCT;
-        }
 
         // Set next loan term length
         if (
