@@ -91,7 +91,8 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      */
     function initialize(
         InitParams calldata _initParams,
-        Vault.VaultParams calldata _vaultParams
+        Vault.VaultParams calldata _vaultParams,
+        Vault.AllocationState calldata _allocationState
     ) external initializer {
         baseInitialize(
             _initParams._owner,
@@ -103,29 +104,14 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
             _initParams._performanceFee,
             _initParams._tokenName,
             _initParams._tokenSymbol,
-            _vaultParams
+            _vaultParams,
+            _allocationState
         );
     }
 
     /************************************************
      *  SETTERS
      ***********************************************/
-    //
-    //
-    // /**
-    //  * @notice Sets the new options premium pricer contract
-    //  * @param newOptionsPremiumPricer is the address of the new strike selection contract
-    //  */
-    // function setOptionsPremiumPricer(address newOptionsPremiumPricer)
-    //     external
-    //     onlyOwner
-    // {
-    //     require(
-    //         newOptionsPremiumPricer != address(0),
-    //         "!newOptionsPremiumPricer"
-    //     );
-    //     optionsPremiumPricer = newOptionsPremiumPricer;
-    // }
 
     /**
      * @notice Sets the new liquidityGauge contract for this vault
@@ -212,71 +198,12 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     }
 
     /**
-     * @notice Sets the next option the vault will be shorting, and closes the existing short.
-     */
-    function commitAndClose() external nonReentrant {
-        address oldOption = optionState.currentOption;
-
-        VaultLifecycle.CloseParams memory closeParams =
-            VaultLifecycle.CloseParams({
-                OTOKEN_FACTORY: OTOKEN_FACTORY,
-                USDC: USDC,
-                currentOption: oldOption,
-                delay: DELAY,
-                lastStrikeOverrideRound: lastStrikeOverrideRound,
-                overriddenStrikePrice: overriddenStrikePrice,
-                strikeSelection: strikeSelection,
-                optionsPremiumPricer: optionsPremiumPricer,
-                premiumDiscount: premiumDiscount
-            });
-
-        (address otokenAddress, uint256 strikePrice, uint256 delta) =
-            VaultLifecycle.commitAndClose(closeParams, vaultParams, vaultState);
-
-        emit NewOptionStrikeSelected(strikePrice, delta);
-
-        optionState.nextOption = otokenAddress;
-
-        uint256 nextOptionReady = block.timestamp.add(DELAY);
-        require(
-            nextOptionReady <= type(uint32).max,
-            "Overflow nextOptionReady"
-        );
-        optionState.nextOptionReadyAt = uint32(nextOptionReady);
-
-        _closeShort(oldOption);
-    }
-
-    /**
-     * @notice Closes the existing short position for the vault.
-     */
-    function _closeShort(address oldOption) private {
-        uint256 lockedAmount = vaultState.lockedAmount;
-        if (oldOption != address(0)) {
-            vaultState.lastLockedAmount = uint104(lockedAmount);
-        }
-        vaultState.lockedAmount = 0;
-
-        optionState.currentOption = address(0);
-
-        if (oldOption != address(0)) {
-            uint256 withdrawAmount =
-                VaultLifecycle.settleShort(GAMMA_CONTROLLER);
-            emit CloseShort(oldOption, withdrawAmount, msg.sender);
-        }
-    }
-
-    /**
      * @notice Rolls the vault's funds into a new short position.
      */
     function rollToNextEpoch() external onlyKeeper nonReentrant {
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
-        (
-            address newOption,
-            uint256 lockedBalance,
-            uint256 queuedWithdrawAmount
-        ) =
+        (uint256 lockedBalance, uint256 queuedWithdrawAmount) =
             _rollToNextEpoch(
                 lastQueuedWithdrawAmount,
                 currQueuedWithdrawShares
@@ -294,26 +221,11 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         currentQueuedWithdrawShares = 0;
 
         ShareMath.assertUint104(lockedBalance);
+        vaultState.lastLockedAmount = vaultState.lockedAmount;
         vaultState.lockedAmount = uint104(lockedBalance);
 
-        emit OpenShort(newOption, lockedBalance, msg.sender);
-
-        uint256 optionsMintAmount =
-            VaultLifecycle.createShort(
-                GAMMA_CONTROLLER,
-                MARGIN_POOL,
-                newOption,
-                lockedBalance
-            );
-
-        VaultLifecycle.allocateOptions(
-            optionsPurchaseQueue,
-            newOption,
-            optionsMintAmount,
-            VaultLifecycle.QUEUE_OPTION_ALLOCATION
-        );
-
-        _startAuction();
+        // _lendFunds()
+        // buyOption()
     }
 
     /**
