@@ -746,8 +746,8 @@ contract RibbonVault is
         }
 
         // Set next loan allocation from vault in USD
-        allocationState.currentLoanAllocation = _allocationState
-            .currentLoanAllocationPCT
+        allocationState.loanAllocation = _allocationState
+            .loanAllocationPCT
             .mul(lockedBalance)
             .div(TOTAL_PCT);
         uint8 optionPurchasesPerLoanTerm =
@@ -755,8 +755,8 @@ contract RibbonVault is
                 _allocationState.nextOptionPurchaseFreq
             );
         // Set next option allocation from vault per purchase in USD
-        allocationState.currentOptionAllocation = lockedBalance
-            .sub(_allocationState.currentLoanAllocation)
+        allocationState.optionAllocation = lockedBalance
+            .sub(_allocationState.loanAllocation)
             .div(optionPurchasesPerLoanTerm);
     }
 
