@@ -34,6 +34,8 @@ contract RibbonVault is
      *  NON UPGRADEABLE STORAGE
      ***********************************************/
 
+    uint16 public constant TOTAL_PCT = 10000; // Equals 100%
+
     /// @notice Stores the user's pending deposit for the round
     mapping(address => Vault.DepositReceipt) public depositReceipts;
 
@@ -59,10 +61,10 @@ contract RibbonVault is
     address public keeper;
 
     /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
-    address public immutable borrower;
+    address public borrower;
 
     /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
-    address public immutable optionSeller;
+    address public optionSeller;
 
     /// @notice Performance fee charged on premiums earned in rollToNextEpoch. Only charged when there is no loss.
     uint256 public performanceFee;
@@ -90,9 +92,6 @@ contract RibbonVault is
 
     /// @notice 1 month period between each lending epoch.
     uint256 public constant PERIOD = 4 weeks;
-
-    /// @notice 1 week period between each options purchase.
-    uint256 public constant OPTIONS_PURCHASE_PERIOD = 1 weeks;
 
     // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
     // Dividing by weeks per year requires doing num.mul(FEE_MULTIPLIER).div(WEEKS_PER_YEAR)
@@ -564,6 +563,8 @@ contract RibbonVault is
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
     ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {
+        require(block.timestamp >= optionState.nextOptionReadyAt, "!ready");
+
         // set next lender alloc
         // remove old lender alloc
         // set next option alloc

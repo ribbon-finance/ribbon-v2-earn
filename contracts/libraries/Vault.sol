@@ -22,7 +22,26 @@ library Vault {
         // Vault cap
         uint104 cap;
     }
-    
+
+    struct AllocationState {
+        // Next Loan Allocation Percent
+        uint16 nextLoanAllocationPCT;
+        // Next Option Purchase Allocation Percent
+        uint16 nextOptionAllocationPCT;
+        /// Next option Purchase Frequency
+        uint32 nextOptionPurchaseFreq;
+        // Current Loan Allocation Percent
+        uint16 currentLoanAllocationPCT;
+        // Current Option Purchase Allocation Percent
+        uint16 currentOptionAllocationPCT;
+        /// Current option Purchase Frequency
+        uint32 currentOptionPurchaseFreq;
+        // Current Loan Allocation in USD
+        uint256 currentLoanAllocation;
+        // Current Option Purchase Allocation per Purchase in USD
+        uint256 currentOptionAllocation;
+    }
+
     struct VaultState {
         // 32 byte slot 1
         //  Current round number. `round` represents the number of `period`s elapsed.
