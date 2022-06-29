@@ -705,7 +705,10 @@ contract RibbonVault is
 
             vaultState.totalPending = 0;
             vaultState.round = uint16(currentRound + 1);
-            vaultState.lastEpochTime = block.timestamp;
+            vaultState.lastEpochTime =
+                block.timestamp -
+                (block.timestamp % (24 hours)) +
+                (8 hours);
         }
 
         _mint(address(this), mintShares);
