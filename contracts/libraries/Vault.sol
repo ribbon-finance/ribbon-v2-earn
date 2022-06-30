@@ -9,6 +9,9 @@ library Vault {
     // Fees are 6-decimal places. For example: 20 * 10**6 = 20%
     uint256 internal constant FEE_MULTIPLIER = 10**6;
 
+    // Yield is scaled by 100 (10 ** 2) for PCT.
+    uint256 internal constant YIELD_MULTIPLIER = 10**2;
+
     // Placeholder uint value to prevent cold writes
     uint256 internal constant PLACEHOLDER_UINT = 1;
 
