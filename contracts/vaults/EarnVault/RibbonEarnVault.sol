@@ -35,9 +35,14 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      *  EVENTS
      ***********************************************/
 
-    event OpenLoan(uint256 depositAmount, address indexed receiver);
+    event OpenLoan(uint256 amount, address indexed receiver);
 
-    event CloseLoan(uint256 withdrawAmount, address indexed receiver);
+    event CloseLoan(
+        uint256 amount,
+        uint256 yield,
+        uint256 yearlyInterest,
+        address indexed receiver
+    );
 
     event PurchaseOption(uint256 premium, address indexed receiver);
 
@@ -257,8 +262,13 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
 
     /**
      * @notice Pays option yield if option is ITM
+     * `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
+     * over the EIP712-formatted function arguments
      * @param amount is the amount of yield to pay
-     * @param amount is the amount of yield to pay
+     * @param deadline must be a timestamp in the future
+     * @param v is a valid signature
+     * @param r is a valid signature
+     * @param s is a valid signature
      */
     function payOptionYield(
         uint256 amount,
@@ -282,7 +292,41 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
                     10**IERC20(address(asset)).decimals()
                 )
                 : 0,
-            optionSeller
+            address(this)
+        );
+    }
+
+    /**
+     * @notice Return lend funds
+     * `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
+     * over the EIP712-formatted function arguments
+     * @param amount is the amount to return (principal + interest)
+     * @param deadline must be a timestamp in the future
+     * @param v is a valid signature
+     * @param r is a valid signature
+     * @param s is a valid signature
+     */
+    function returnLentFunds(
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external onlyBorrower {
+        IERC20Permit asset = IERC20Permit(vaultParams.asset);
+
+        // Pay option yields to contract
+        asset.permit(msg.sender, address(this), amount, deadline, v, r, s);
+        asset.safeTransferFrom(msg.sender, address(this), amount);
+
+        uint256 yield =
+            amount > loanAllocation ? amount.sub(loanAllocation) : 0;
+
+        emit CloseLoan(
+            amount,
+            yield,
+            (yield * 12).mul(10**2).div(loanAllocation),
+            address(this)
         );
     }
 
