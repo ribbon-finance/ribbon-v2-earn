@@ -214,11 +214,11 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     /**
      * @notice Rolls the vault's funds into a new short position.
      */
-    function rollToNextEpoch() external onlyKeeper nonReentrant {
+    function rollToNextRound() external onlyKeeper nonReentrant {
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
         (uint256 lockedBalance, uint256 queuedWithdrawAmount) =
-            _rollToNextEpoch(
+            _rollToNextRound(
                 lastQueuedWithdrawAmount,
                 currQueuedWithdrawShares
             );
@@ -282,10 +282,8 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         bytes32 r,
         bytes32 s
     ) external onlyOptionSeller {
-        IERC20 asset = IERC20(vaultParams.asset);
-
-        // Pay option yields to contract
-        IERC20Permit(address(asset)).permit(
+        // Sign for transfer approval
+        IERC20Permit(vaultParams.asset).permit(
             msg.sender,
             address(this),
             amount,
@@ -294,7 +292,29 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
             r,
             s
         );
-        asset.safeTransferFrom(msg.sender, address(this), amount);
+
+        // Pay option yields to contract
+        _payOptionYield(amount);
+    }
+
+    /**
+     * @notice Pays option yield if option is ITM
+     * @param amount is the amount of yield to pay
+     */
+    function payOptionYield(uint256 amount) external onlyOptionSeller {
+        // Pay option yields to contract
+        _payOptionYield(amount);
+    }
+
+    /**
+     * @notice Helper function that transfers funds from option
+     * seller
+     * @param amount is the amount of yield to pay
+     */
+    function _payOptionYield(uint256 amount) internal {
+        address asset = vaultParams.asset;
+
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
 
         uint256 optionAllocation = allocationState.optionAllocation;
 
@@ -303,7 +323,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         uint256 yieldInPCT =
             amount > optionAllocation
                 ? amount.mul(10**2).div(optionAllocation).div(
-                    10**IERC20Detailed(address(asset)).decimals()
+                    10**IERC20Detailed(asset)).decimals()
                 )
                 : 0;
 
@@ -327,10 +347,8 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         bytes32 r,
         bytes32 s
     ) external onlyBorrower {
-        IERC20 asset = IERC20(vaultParams.asset);
-
-        // Pay option yields to contract
-        IERC20Permit(address(asset)).permit(
+        // Sign for transfer approval
+        IERC20Permit(vaultParams.asset).permit(
             msg.sender,
             address(this),
             amount,
@@ -339,7 +357,22 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
             r,
             s
         );
-        asset.safeTransferFrom(msg.sender, address(this), amount);
+
+        // Return lent funds
+        _returnLentFunds(amount);
+    }
+
+    /**
+     * @notice Return lend funds
+     * @param amount is the amount to return (principal + interest)
+     */
+    function returnLentFunds(uint256 amount) external onlyBorrower {
+        // Return lent funds
+        _returnLentFunds(amount);
+    }
+
+    function _returnLentFunds(uint256 amount) internal {
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
