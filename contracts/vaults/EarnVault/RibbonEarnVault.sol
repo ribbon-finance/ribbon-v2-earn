@@ -44,58 +44,6 @@ contract RibbonEarnVault is
     using SafeMath for uint256;
     using ShareMath for Vault.DepositReceipt;
 
-    /************************************************
-     *  NON UPGRADEABLE STORAGE
-     ***********************************************/
-
-    /// @notice Stores the user's pending deposit for the round
-    mapping(address => Vault.DepositReceipt) public depositReceipts;
-
-    /// @notice On every round's close, the pricePerShare value of an rTHETA token is stored
-    /// This is used to determine the number of shares to be returned
-    /// to a user with their DepositReceipt.depositAmount
-    mapping(uint256 => uint256) public roundPricePerShare;
-
-    /// @notice Stores pending user withdrawals
-    mapping(address => Vault.Withdrawal) public withdrawals;
-
-    /// @notice Vault's parameters like cap, decimals
-    Vault.VaultParams public vaultParams;
-
-    /// @notice Vault's lifecycle state like round and locked amounts
-    Vault.VaultState public vaultState;
-
-    /// @notice Vault's state of the allocation between lending and buying options
-    Vault.AllocationState public allocationState;
-
-    /// @notice Fee recipient for the performance and management fees
-    address public feeRecipient;
-
-    /// @notice role in charge of weekly vault operations such as rollToNextRound and burnRemainingOTokens
-    // no access to critical vault changes
-    address public keeper;
-
-    /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
-    address public borrower;
-
-    /// @notice pendingBorrower is the pending address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
-    address public pendingBorrower;
-
-    /// @notice lastBorrowerChange is the last time borrower was set
-    uint256 public lastBorrowerChange;
-
-    /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
-    address public optionSeller;
-
-    /// @notice Performance fee charged on premiums earned in rollToNextRound. Only charged when there is no loss.
-    uint256 public performanceFee;
-
-    /// @notice Management fee charged on entire AUM in rollToNextRound. Only charged when there is no loss.
-    uint256 public managementFee;
-
-    // Gap is left to avoid storage collisions. Though RibbonVault is not upgradeable, we add this as a safety measure.
-    uint256[30] private ____gap;
-
     // *IMPORTANT* NO NEW STORAGE VARIABLES SHOULD BE ADDED HERE
     // This is to prevent storage collisions. All storage variables should be appended to RibbonEarnVaultStorage.
     // Read this documentation to learn more:
@@ -776,23 +724,6 @@ contract RibbonEarnVault is
     /************************************************
      *  VAULT OPERATIONS
      ***********************************************/
-
-    /**
-     * @notice Helper function that helps to save gas for writing values into the roundPricePerShare map.
-     *         Writing `1` into the map makes subsequent writes warm, reducing the gas from 20k to 5k.
-     *         Having 1 initialized beforehand will not be an issue as long as we round down share calculations to 0.
-     * @param numRounds is the number of rounds to initialize in the map
-     */
-    function initRounds(uint256 numRounds) external nonReentrant {
-        require(numRounds > 0, "!numRounds");
-
-        uint256 _round = vaultState.round;
-        for (uint256 i = 0; i < numRounds; i++) {
-            uint256 index = _round + i;
-            require(roundPricePerShare[index] == 0, "Initialized"); // AVOID OVERWRITING ACTUAL VALUES
-            roundPricePerShare[index] = ShareMath.PLACEHOLDER_UINT;
-        }
-    }
 
     /**
      * @notice Stakes a users vault shares
