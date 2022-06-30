@@ -279,7 +279,7 @@ contract RibbonVault is
         require(newBorrower != borrower, "Must be new borrower");
         emit BorrowerSet(borrower, newBorrower);
         pendingBorrower = newBorrower;
-        vaultState.lastBorrowerChange = block.timestamp;
+        lastBorrowerChange = block.timestamp;
     }
 
     /**
@@ -297,10 +297,7 @@ contract RibbonVault is
      * @notice Commits the pending borrower
      */
     function commitBorrower() external onlyOwner {
-        require(
-            block.timestamp >= vaultState.lastBorrowerChange.add(3 days),
-            "!timelock"
-        );
+        require(block.timestamp >= lastBorrowerChange.add(3 days), "!timelock");
         borrower = pendingBorrower;
     }
 
