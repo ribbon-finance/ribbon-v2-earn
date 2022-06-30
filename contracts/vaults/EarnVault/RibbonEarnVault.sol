@@ -225,8 +225,10 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         vaultState.lockedAmount = uint104(lockedBalance);
 
         // _lendFunds()
-        // buyOption()
+        // _buyOption()
     }
+
+    function buyOption() external onlyKeeper {}
 
     /**
      * @notice Recovery function that returns an ERC20 token to the recipient

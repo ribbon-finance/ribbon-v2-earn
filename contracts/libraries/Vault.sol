@@ -61,6 +61,8 @@ library Vault {
         uint128 lastEpochTime;
         // Last Option Purchase Date
         uint128 lastOptionPurchaseTime;
+        // Last Time Borrower was set
+        uint128 lastBorrowerChange;
     }
 
     struct DepositReceipt {
