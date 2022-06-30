@@ -53,7 +53,6 @@ import { assert } from "./helpers/assertions";
 import { TEST_URI } from "../scripts/helpers/getDefaultEthersProvider";
 const { provider, getContractAt, getContractFactory } = ethers;
 const { parseEther } = ethers.utils;
-
 moment.tz.setDefault("UTC");
 
 const OPTION_DELAY = 0;
