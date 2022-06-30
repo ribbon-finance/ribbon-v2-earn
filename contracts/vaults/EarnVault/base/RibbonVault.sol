@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {
     ReentrancyGuardUpgradeable
 } from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -68,7 +69,7 @@ contract RibbonVault is
     address public pendingBorrower;
 
     /// @notice lastBorrowerChange is the last time borrower was set
-    uint128 public lastBorrowerChange;
+    uint256 public lastBorrowerChange;
 
     /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
     address public optionSeller;
@@ -128,10 +129,10 @@ contract RibbonVault is
     event OptionSellerSet(address oldOptionSeller, address newOptionSeller);
 
     event NewLoanOptionAllocationSet(
-        uint16 oldLoanAllocation,
-        uint16 oldOptionAllocation,
-        uint16 newLoanAllocation,
-        uint16 newOptionAllocation
+        uint256 oldLoanAllocation,
+        uint256 oldOptionAllocation,
+        uint256 newLoanAllocation,
+        uint256 newOptionAllocation
     );
 
     event NewLoanTermLength(
@@ -280,7 +281,7 @@ contract RibbonVault is
         require(newBorrower != borrower, "Must be new borrower");
         emit BorrowerSet(borrower, newBorrower);
         pendingBorrower = newBorrower;
-        lastBorrowerChange = uint128(block.timestamp);
+        lastBorrowerChange = block.timestamp;
     }
 
     /**
@@ -298,10 +299,7 @@ contract RibbonVault is
      * @notice Commits the pending borrower
      */
     function commitBorrower() external onlyOwner {
-        require(
-            block.timestamp >= uint256(lastBorrowerChange).add(3 days),
-            "!timelock"
-        );
+        require(block.timestamp >= lastBorrowerChange + 3 days, "!timelock");
         borrower = pendingBorrower;
     }
 
@@ -364,10 +362,10 @@ contract RibbonVault is
             uint16(uint256(TOTAL_PCT).sub(_loanAllocationPCT));
 
         emit NewLoanOptionAllocationSet(
-            allocationState.loanAllocationPCT,
-            allocationState.optionAllocationPCT,
-            _loanAllocationPCT,
-            nextOptionAllocationPCT
+            uint256(allocationState.loanAllocationPCT),
+            uint256(allocationState.optionAllocationPCT),
+            uint256(_loanAllocationPCT),
+            uint256(nextOptionAllocationPCT)
         );
 
         allocationState.loanAllocationPCT = _loanAllocationPCT;
@@ -780,7 +778,7 @@ contract RibbonVault is
             .mul(lockedBalance)
             .div(TOTAL_PCT);
         uint8 optionPurchasesPerLoanTerm =
-            uint8(
+            SafeCast.toUint8(
                 uint256(_allocationState.currentLoanTermLength).div(
                     _allocationState.nextOptionPurchaseFreq
                 )

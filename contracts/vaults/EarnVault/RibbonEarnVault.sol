@@ -36,22 +36,22 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      *  EVENTS
      ***********************************************/
 
-    event OpenLoan(uint256 amount, address indexed receiver);
+    event OpenLoan(uint256 amount, address indexed borrower);
 
     event CloseLoan(
         uint256 amount,
         uint256 yield,
         uint256 yearlyInterest,
-        address indexed receiver
+        address indexed borrower
     );
 
-    event PurchaseOption(uint256 premium, address indexed receiver);
+    event PurchaseOption(uint256 premium, address indexed seller);
 
     event PayOptionYield(
         uint256 yield,
         uint256 netYield,
         uint256 pctPayoff,
-        address indexed receiver
+        address indexed seller
     );
 
     event InstantWithdraw(
@@ -327,7 +327,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
                 )
                 : 0;
 
-        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, address(this));
+        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
     }
 
     /**
@@ -387,7 +387,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
             amount,
             yield,
             (yield * 12).mul(10**2).div(loanAllocation),
-            address(this)
+            msg.sender
         );
     }
 
