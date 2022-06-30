@@ -213,11 +213,11 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     /**
      * @notice Rolls the vault's funds into a new short position.
      */
-    function rollToNextEpoch() external onlyKeeper nonReentrant {
+    function rollToNextRound() external onlyKeeper nonReentrant {
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
         (uint256 lockedBalance, uint256 queuedWithdrawAmount) =
-            _rollToNextEpoch(
+            _rollToNextRound(
                 lastQueuedWithdrawAmount,
                 currQueuedWithdrawShares
             );
