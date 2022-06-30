@@ -276,9 +276,10 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         emit PayOptionYield(
             amount,
             amount > optionAllocation ? amount.sub(optionAllocation) : 0,
+            // In %
             amount > optionAllocation
-                ? amount.div(optionAllocation).div(
-                    IERC20(address(asset)).decimals().sub(2)
+                ? amount.mul(10**2).div(optionAllocation).div(
+                    10**IERC20(address(asset)).decimals()
                 )
                 : 0,
             optionSeller
