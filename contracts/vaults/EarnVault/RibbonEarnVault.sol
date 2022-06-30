@@ -34,11 +34,11 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      *  EVENTS
      ***********************************************/
 
-    event OpenLoan(uint256 depositAmount, address indexed manager);
+    event OpenLoan(uint256 depositAmount, address indexed receiver);
 
-    event CloseLoan(uint256 withdrawAmount, address indexed manager);
+    event CloseLoan(uint256 withdrawAmount, address indexed receiver);
 
-    event PurchaseOption(uint256 premium, address indexed manager);
+    event PurchaseOption(uint256 premium, address indexed receiver);
 
     event InstantWithdraw(
         address indexed account,
@@ -224,8 +224,27 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         vaultState.lastLockedAmount = vaultState.lockedAmount;
         vaultState.lockedAmount = uint104(lockedBalance);
 
-        // _lendFunds()
-        // _buyOption()
+        // Lend funds to borrower
+        IERC20(vaultParams.asset).safeTransfer(borrower, loanAllocation);
+
+        emit OpenLoan(loanAllocation, borrower);
+    }
+
+    /**
+     * @notice Buys the option by transferring premiums to option seller
+     */
+    function buyOption() external onlyKeeper {
+        require(
+            block.timestamp >=
+                vaultState.lastOptionPurchaseTime.add(
+                    currentOptionPurchaseFreq
+                ),
+            "!earlypurchase"
+        );
+
+        IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
+
+        emit PurchaseOption(optionAllocation, optionSeller);
     }
 
     /**
