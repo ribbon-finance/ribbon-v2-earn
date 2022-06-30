@@ -277,10 +277,38 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         bytes32 r,
         bytes32 s
     ) external onlyOptionSeller {
-        IERC20Permit asset = IERC20Permit(vaultParams.asset);
+        // Sign for transfer approval
+        IERC20Permit(vaultParams.asset).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
 
         // Pay option yields to contract
-        asset.permit(msg.sender, address(this), amount, deadline, v, r, s);
+        _payOptionYield(amount);
+    }
+
+    /**
+     * @notice Pays option yield if option is ITM
+     * @param amount is the amount of yield to pay
+     */
+    function payOptionYield(uint256 amount) external onlyOptionSeller {
+        // Pay option yields to contract
+        _payOptionYield(amount);
+    }
+
+    /**
+     * @notice Helper function that transfers funds from option
+     * seller
+     * @param amount is the amount of yield to pay
+     */
+    function _payOptionYield(uint256 amount) internal {
+        IERC20 asset = IERC20(vaultParams.asset);
+
         asset.safeTransferFrom(msg.sender, address(this), amount);
 
         emit PayOptionYield(
@@ -289,7 +317,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
             // In %
             amount > optionAllocation
                 ? amount.mul(10**2).div(optionAllocation).div(
-                    10**IERC20(address(asset)).decimals()
+                    10**asset.decimals()
                 )
                 : 0,
             address(this)
@@ -313,10 +341,31 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         bytes32 r,
         bytes32 s
     ) external onlyBorrower {
-        IERC20Permit asset = IERC20Permit(vaultParams.asset);
+        // Sign for transfer approval
+        IERC20Permit(vaultParams.asset).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
 
-        // Pay option yields to contract
-        asset.permit(msg.sender, address(this), amount, deadline, v, r, s);
+        // Return lent funds
+        _returnLentFunds(amount);
+    }
+
+    /**
+     * @notice Return lend funds
+     * @param amount is the amount to return (principal + interest)
+     */
+    function returnLentFunds(uint256 amount) external onlyBorrower {
+        // Return lent funds
+        _returnLentFunds(amount);
+    }
+
+    function _returnLentFunds(uint256 amount) internal {
         asset.safeTransferFrom(msg.sender, address(this), amount);
 
         uint256 yield =
