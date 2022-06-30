@@ -944,9 +944,7 @@ contract RibbonEarnVault is
             amount > optionAllocation ? amount.sub(optionAllocation) : 0;
         uint256 yieldInPCT =
             amount > optionAllocation
-                ? amount.mul(10**2).div(optionAllocation).div(
-                    10**IERC20Detailed(asset).decimals()
-                )
+                ? amount.mul(YIELD_MULTIPLIER).div(optionAllocation)
                 : 0;
 
         emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
