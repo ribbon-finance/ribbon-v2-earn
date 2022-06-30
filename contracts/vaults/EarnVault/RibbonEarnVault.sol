@@ -38,7 +38,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
 
     event CloseLoan(uint256 withdrawAmount, address indexed manager);
 
-    event PurchaseOption(uint256 amount, address indexed manager);
+    event PurchaseOption(uint256 premium, address indexed manager);
 
     event InstantWithdraw(
         address indexed account,
@@ -228,7 +228,22 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         // _buyOption()
     }
 
-    function buyOption() external onlyKeeper {}
+    /**
+     * @notice Buys the option by transferring premiums to option seller
+     */
+    function buyOption() external onlyKeeper {
+        require(
+            block.timestamp >=
+                vaultState.lastOptionPurchaseTime.add(
+                    currentOptionPurchaseFreq
+                ),
+            "!earlypurchase"
+        );
+
+        IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
+
+        emit PurchaseOption(optionAllocation, optionSeller);
+    }
 
     /**
      * @notice Recovery function that returns an ERC20 token to the recipient
