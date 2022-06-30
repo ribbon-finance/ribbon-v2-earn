@@ -41,6 +41,13 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
 
     event PurchaseOption(uint256 premium, address indexed receiver);
 
+    event PayOptionYield(
+        uint256 yield,
+        uint256 netYield,
+        uint256 pctPayoff,
+        address indexed receiver
+    );
+
     event InstantWithdraw(
         address indexed account,
         uint256 amount,
@@ -266,7 +273,16 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         asset.permit(msg.sender, address(this), amount, deadline, v, r, s);
         asset.safeTransferFrom(msg.sender, address(this), amount);
 
-        emit PurchaseOption(optionAllocation, optionSeller);
+        emit PayOptionYield(
+            amount,
+            amount > optionAllocation ? amount.sub(optionAllocation) : 0,
+            amount > optionAllocation
+                ? amount.div(optionAllocation).div(
+                    IERC20(address(asset)).decimals().sub(2)
+                )
+                : 0,
+            optionSeller
+        );
     }
 
     /**
