@@ -3,6 +3,7 @@ pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/draft-IERC20Permit.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -243,6 +244,27 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         );
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
+
+        emit PurchaseOption(optionAllocation, optionSeller);
+    }
+
+    /**
+     * @notice Pays option yield if option is ITM
+     * @param amount is the amount of yield to pay
+     * @param amount is the amount of yield to pay
+     */
+    function payOptionYield(
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external onlyOptionSeller {
+        IERC20Permit asset = IERC20Permit(vaultParams.asset);
+
+        // Pay option yields to contract
+        asset.permit(msg.sender, address(this), amount, deadline, v, r, s);
+        asset.safeTransferFrom(msg.sender, address(this), amount);
 
         emit PurchaseOption(optionAllocation, optionSeller);
     }
