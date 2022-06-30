@@ -58,9 +58,9 @@ library Vault {
         // Total amount of queued withdrawal shares from previous rounds (doesn't include the current round)
         uint128 queuedWithdrawShares;
         // Last Loan Allocation Date
-        uint128 lastEpochTime;
+        uint64 lastEpochTime;
         // Last Option Purchase Date
-        uint128 lastOptionPurchaseTime;
+        uint64 lastOptionPurchaseTime;
     }
 
     struct DepositReceipt {
