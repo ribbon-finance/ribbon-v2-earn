@@ -125,10 +125,10 @@ contract RibbonVault is
     event OptionSellerSet(address oldOptionSeller, address newOptionSeller);
 
     event NewLoanOptionAllocationSet(
-        uint256 oldLoanAllocation,
-        uint256 oldOptionAllocation,
-        uint256 newLoanAllocation,
-        uint256 newOptionAllocation
+        uint16 oldLoanAllocation,
+        uint16 oldOptionAllocation,
+        uint16 newLoanAllocation,
+        uint16 newOptionAllocation
     );
 
     event NewLoanTermLength(
@@ -218,8 +218,6 @@ contract RibbonVault is
         ShareMath.assertUint104(assetBalance);
         vaultState.lastLockedAmount = uint104(assetBalance);
 
-        _updateAllocationState();
-
         vaultState.round = 1;
     }
 
@@ -279,7 +277,7 @@ contract RibbonVault is
         require(newBorrower != borrower, "Must be new borrower");
         emit BorrowerSet(borrower, newBorrower);
         pendingBorrower = newBorrower;
-        vaultState.lastBorrowerChange = block.timestamp;
+        vaultState.lastBorrowerChange = uint128(block.timestamp);
     }
 
     /**
@@ -298,7 +296,8 @@ contract RibbonVault is
      */
     function commitBorrower() external onlyOwner {
         require(
-            block.timestamp >= vaultState.lastBorrowerChange.add(3 days),
+            block.timestamp >=
+                uint256(vaultState.lastBorrowerChange).add(3 days),
             "!timelock"
         );
         borrower = pendingBorrower;
@@ -354,12 +353,13 @@ contract RibbonVault is
      * @dev Can be called by admin
      * @param _loanAllocationPCT new allocation for loan
      */
-    function setLoanAllocationPCT(uint256 _loanAllocationPCT)
+    function setLoanAllocationPCT(uint16 _loanAllocationPCT)
         external
         onlyOwner
     {
         require(_loanAllocationPCT <= TOTAL_PCT, "!_loanAllocationPCT");
-        uint256 nextOptionAllocationPCT = TOTAL_PCT.sub(_loanAllocationPCT);
+        uint16 nextOptionAllocationPCT =
+            uint16(uint256(TOTAL_PCT).sub(_loanAllocationPCT));
 
         emit NewLoanOptionAllocationSet(
             allocationState.loanAllocationPCT,
@@ -377,7 +377,7 @@ contract RibbonVault is
      * @dev Can be called by admin
      * @param _loanTermLength new loan term length
      */
-    function setLoanTermLength(uint256 _loanTermLength) external onlyOwner {
+    function setLoanTermLength(uint32 _loanTermLength) external onlyOwner {
         require(_loanTermLength >= 1 days, "!_loanTermLength");
 
         allocationState.nextLoanTermLength = _loanTermLength;
@@ -392,7 +392,7 @@ contract RibbonVault is
      * @dev Can be called by admin
      * @param _optionPurchaseFreq new option purchase frequency
      */
-    function setOptionPurchaseFrequency(uint256 _optionPurchaseFreq)
+    function setOptionPurchaseFrequency(uint32 _optionPurchaseFreq)
         external
         onlyOwner
     {
@@ -686,7 +686,7 @@ contract RibbonVault is
     ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {
         require(
             block.timestamp >=
-                vaultState.lastEpochTime.add(
+                uint256(vaultState.lastEpochTime).add(
                     allocationState.currentLoanTermLength
                 ),
             "!ready"
@@ -731,10 +731,9 @@ contract RibbonVault is
 
             vaultState.totalPending = 0;
             vaultState.round = uint16(currentRound + 1);
-            vaultState.lastEpochTime =
-                block.timestamp -
-                (block.timestamp % (24 hours)) +
-                (8 hours);
+            vaultState.lastEpochTime = uint128(
+                block.timestamp - (block.timestamp % (24 hours)) + (8 hours)
+            );
         }
 
         _mint(address(this), mintShares);
@@ -743,7 +742,7 @@ contract RibbonVault is
             transferAsset(payable(recipient), totalVaultFee);
         }
 
-        _updateAllocationState();
+        _updateAllocationState(lockedBalance);
 
         return (lockedBalance, queuedWithdrawAmount);
     }
@@ -752,8 +751,9 @@ contract RibbonVault is
      * @notice Helper function that updates allocation state
      * such as loan term length, option purchase frequency, loan / option
      * allocation split, etc.
+     * @param lockedBalance is the locked balance for newest epoch
      */
-    function _updateAllocationState() internal {
+    function _updateAllocationState(uint256 lockedBalance) internal {
         Vault.AllocationState memory _allocationState = allocationState;
 
         // Set next loan term length
@@ -771,13 +771,17 @@ contract RibbonVault is
         }
 
         // Set next loan allocation from vault in USD
-        allocationState.loanAllocation = _allocationState
-            .loanAllocationPCT
+        allocationState.loanAllocation = uint256(
+            _allocationState
+                .loanAllocationPCT
+        )
             .mul(lockedBalance)
             .div(TOTAL_PCT);
         uint8 optionPurchasesPerLoanTerm =
-            _allocationState.currentLoanTermLength.div(
-                _allocationState.nextOptionPurchaseFreq
+            uint8(
+                uint256(_allocationState.currentLoanTermLength).div(
+                    _allocationState.nextOptionPurchaseFreq
+                )
             );
         // Set next option allocation from vault per purchase in USD
         allocationState.optionAllocation = lockedBalance

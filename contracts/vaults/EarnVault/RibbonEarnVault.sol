@@ -3,6 +3,7 @@ pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Detailed} from "../../interfaces/IERC20Detailed.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/draft-IERC20Permit.sol";
 import {
     SafeERC20
@@ -237,6 +238,8 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         vaultState.lastLockedAmount = vaultState.lockedAmount;
         vaultState.lockedAmount = uint104(lockedBalance);
 
+        uint256 loanAllocation = allocationState.loanAllocation;
+
         // Lend funds to borrower
         IERC20(vaultParams.asset).safeTransfer(borrower, loanAllocation);
 
@@ -249,11 +252,13 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     function buyOption() external onlyKeeper {
         require(
             block.timestamp >=
-                vaultState.lastOptionPurchaseTime.add(
-                    currentOptionPurchaseFreq
+                uint256(vaultState.lastOptionPurchaseTime).add(
+                    allocationState.currentOptionPurchaseFreq
                 ),
             "!earlypurchase"
         );
+
+        uint256 optionAllocation = allocationState.optionAllocation;
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
 
@@ -277,23 +282,32 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         bytes32 r,
         bytes32 s
     ) external onlyOptionSeller {
-        IERC20Permit asset = IERC20Permit(vaultParams.asset);
+        IERC20 asset = IERC20(vaultParams.asset);
 
         // Pay option yields to contract
-        asset.permit(msg.sender, address(this), amount, deadline, v, r, s);
+        IERC20Permit(address(asset)).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
         asset.safeTransferFrom(msg.sender, address(this), amount);
 
-        emit PayOptionYield(
-            amount,
-            amount > optionAllocation ? amount.sub(optionAllocation) : 0,
-            // In %
+        uint256 optionAllocation = allocationState.optionAllocation;
+
+        uint256 yieldInUSD =
+            amount > optionAllocation ? amount.sub(optionAllocation) : 0;
+        uint256 yieldInPCT =
             amount > optionAllocation
                 ? amount.mul(10**2).div(optionAllocation).div(
-                    10**IERC20(address(asset)).decimals()
+                    10**IERC20Detailed(address(asset)).decimals()
                 )
-                : 0,
-            address(this)
-        );
+                : 0;
+
+        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, address(this));
     }
 
     /**
@@ -313,11 +327,21 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         bytes32 r,
         bytes32 s
     ) external onlyBorrower {
-        IERC20Permit asset = IERC20Permit(vaultParams.asset);
+        IERC20 asset = IERC20(vaultParams.asset);
 
         // Pay option yields to contract
-        asset.permit(msg.sender, address(this), amount, deadline, v, r, s);
+        IERC20Permit(address(asset)).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
         asset.safeTransferFrom(msg.sender, address(this), amount);
+
+        uint256 loanAllocation = allocationState.loanAllocation;
 
         uint256 yield =
             amount > loanAllocation ? amount.sub(loanAllocation) : 0;
