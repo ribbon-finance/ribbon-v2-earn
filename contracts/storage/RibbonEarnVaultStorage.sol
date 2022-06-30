@@ -10,8 +10,6 @@ abstract contract RibbonEarnVaultStorageV1 {
     address public vaultPauser;
     // LiquidityGauge contract for the vault
     address public liquidityGauge;
-    // Last Time Borrower was set
-    uint128 public lastBorrowerChange;
 }
 
 // We are following Compound's method of upgrading new contract implementations
