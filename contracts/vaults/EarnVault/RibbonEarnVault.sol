@@ -3,6 +3,7 @@ pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Detailed} from "../../interfaces/IERC20Detailed.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/draft-IERC20Permit.sol";
 import {
     SafeERC20
@@ -35,22 +36,22 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      *  EVENTS
      ***********************************************/
 
-    event OpenLoan(uint256 amount, address indexed receiver);
+    event OpenLoan(uint256 amount, address indexed borrower);
 
     event CloseLoan(
         uint256 amount,
         uint256 yield,
         uint256 yearlyInterest,
-        address indexed receiver
+        address indexed borrower
     );
 
-    event PurchaseOption(uint256 premium, address indexed receiver);
+    event PurchaseOption(uint256 premium, address indexed seller);
 
     event PayOptionYield(
         uint256 yield,
         uint256 netYield,
         uint256 pctPayoff,
-        address indexed receiver
+        address indexed seller
     );
 
     event InstantWithdraw(
@@ -237,6 +238,8 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         vaultState.lastLockedAmount = vaultState.lockedAmount;
         vaultState.lockedAmount = uint104(lockedBalance);
 
+        uint256 loanAllocation = allocationState.loanAllocation;
+
         // Lend funds to borrower
         IERC20(vaultParams.asset).safeTransfer(borrower, loanAllocation);
 
@@ -249,11 +252,13 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     function buyOption() external onlyKeeper {
         require(
             block.timestamp >=
-                vaultState.lastOptionPurchaseTime.add(
-                    currentOptionPurchaseFreq
+                uint256(vaultState.lastOptionPurchaseTime).add(
+                    allocationState.currentOptionPurchaseFreq
                 ),
             "!earlypurchase"
         );
+
+        uint256 optionAllocation = allocationState.optionAllocation;
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
 
@@ -307,21 +312,22 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      * @param amount is the amount of yield to pay
      */
     function _payOptionYield(uint256 amount) internal {
-        IERC20 asset = IERC20(vaultParams.asset);
+        address asset = vaultParams.asset;
 
-        asset.safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
 
-        emit PayOptionYield(
-            amount,
-            amount > optionAllocation ? amount.sub(optionAllocation) : 0,
-            // In %
+        uint256 optionAllocation = allocationState.optionAllocation;
+
+        uint256 yieldInUSD =
+            amount > optionAllocation ? amount.sub(optionAllocation) : 0;
+        uint256 yieldInPCT =
             amount > optionAllocation
                 ? amount.mul(10**2).div(optionAllocation).div(
-                    10**asset.decimals()
+                    10**IERC20Detailed(asset).decimals()
                 )
-                : 0,
-            address(this)
-        );
+                : 0;
+
+        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
     }
 
     /**
@@ -366,7 +372,13 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     }
 
     function _returnLentFunds(uint256 amount) internal {
-        asset.safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(vaultParams.asset).safeTransferFrom(
+            msg.sender,
+            address(this),
+            amount
+        );
+
+        uint256 loanAllocation = allocationState.loanAllocation;
 
         uint256 yield =
             amount > loanAllocation ? amount.sub(loanAllocation) : 0;
@@ -375,7 +387,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
             amount,
             yield,
             (yield * 12).mul(10**2).div(loanAllocation),
-            address(this)
+            msg.sender
         );
     }
 
