@@ -7,22 +7,6 @@ import {Vault} from "../libraries/Vault.sol";
 contract TestVaultLifecycleEarn {
     Vault.VaultState public vaultState;
 
-    function getNextFriday(uint256 currentExpiry)
-        external
-        pure
-        returns (uint256 nextFriday)
-    {
-        return VaultLifecycleEarn.getNextFriday(currentExpiry);
-    }
-
-    function getNextExpiry(address currentOption)
-        external
-        view
-        returns (uint256 nextExpiry)
-    {
-        return VaultLifecycleEarn.getNextExpiry(currentOption);
-    }
-
     function balanceOf(address account) public view returns (uint256) {
         if (account == address(this)) {
             return 1 ether;

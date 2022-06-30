@@ -69,7 +69,7 @@ library VaultLifecycleEarn {
             currentBalance.sub(params.lastQueuedWithdrawAmount);
 
         {
-            (performanceFeeInAsset, , totalVaultFee) = VaultLifecycle
+            (performanceFeeInAsset, , totalVaultFee) = VaultLifecycleEarn
                 .getVaultFees(
                 balanceForVaultFees,
                 vaultState.lastLockedAmount,
@@ -221,7 +221,6 @@ library VaultLifecycleEarn {
         require(bytes(tokenSymbol).length > 0, "!tokenSymbol");
 
         require(_vaultParams.asset != address(0), "!asset");
-        require(_vaultParams.underlying != address(0), "!underlying");
         require(_vaultParams.minimumSupply > 0, "!minimumSupply");
         require(_vaultParams.cap > 0, "!cap");
         require(
