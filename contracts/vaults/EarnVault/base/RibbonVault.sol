@@ -57,20 +57,23 @@ contract RibbonVault is
     /// @notice Fee recipient for the performance and management fees
     address public feeRecipient;
 
-    /// @notice role in charge of weekly vault operations such as rollToNextEpoch and burnRemainingOTokens
+    /// @notice role in charge of weekly vault operations such as rollToNextRound and burnRemainingOTokens
     // no access to critical vault changes
     address public keeper;
 
     /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
     address public borrower;
 
+    /// @notice pendingBorrower is the pending address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+    address public pendingBorrower;
+
     /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
     address public optionSeller;
 
-    /// @notice Performance fee charged on premiums earned in rollToNextEpoch. Only charged when there is no loss.
+    /// @notice Performance fee charged on premiums earned in rollToNextRound. Only charged when there is no loss.
     uint256 public performanceFee;
 
-    /// @notice Management fee charged on entire AUM in rollToNextEpoch. Only charged when there is no loss.
+    /// @notice Management fee charged on entire AUM in rollToNextRound. Only charged when there is no loss.
     uint256 public managementFee;
 
     // Gap is left to avoid storage collisions. Though RibbonVault is not upgradeable, we add this as a safety measure.
@@ -215,6 +218,8 @@ contract RibbonVault is
         ShareMath.assertUint104(assetBalance);
         vaultState.lastLockedAmount = uint104(assetBalance);
 
+        _updateAllocationState();
+
         vaultState.round = 1;
     }
 
@@ -273,7 +278,8 @@ contract RibbonVault is
         require(newBorrower != address(0), "!newBorrower");
         require(newBorrower != borrower, "Must be new borrower");
         emit BorrowerSet(borrower, newBorrower);
-        borrower = newBorrower;
+        pendingBorrower = newBorrower;
+        lastBorrowerChange = block.timestamp;
     }
 
     /**
@@ -285,6 +291,14 @@ contract RibbonVault is
         require(newOptionSeller != optionSeller, "Must be new option seller");
         emit OptionSellerSet(optionSeller, newOptionSeller);
         optionSeller = newOptionSeller;
+    }
+
+    /**
+     * @notice Commits the pending borrower
+     */
+    function commitBorrower() external onlyOwner {
+        require(block.timestamp >= lastBorrowerChange.add(3 days), "!timelock");
+        borrower = pendingBorrower;
     }
 
     /**
@@ -663,7 +677,7 @@ contract RibbonVault is
      * @return lockedBalance is the new balance used to calculate next option purchase size or collateral size
      * @return queuedWithdrawAmount is the new queued withdraw amount for this round
      */
-    function _rollToNextEpoch(
+    function _rollToNextRound(
         uint256 lastQueuedWithdrawAmount,
         uint256 currentQueuedWithdrawShares
     ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {

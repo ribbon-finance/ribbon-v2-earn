@@ -3,18 +3,17 @@ pragma solidity =0.8.4;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/draft-IERC20Permit.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {
-    RibbonEarnVaultStorage
-} from "../../../storage/RibbonEarnVaultStorage.sol";
-import {Vault} from "../../../libraries/Vault.sol";
-import {VaultLifecycleEarn} from "../../../libraries/VaultLifecycleEarn.sol";
-import {ShareMath} from "../../../libraries/ShareMath.sol";
-import {ILiquidityGauge} from "../../../interfaces/ILiquidityGauge.sol";
-import {IVaultPauser} from "../../../interfaces/IVaultPauser.sol";
+import {RibbonEarnVaultStorage} from "../../storage/RibbonEarnVaultStorage.sol";
+import {Vault} from "../../libraries/Vault.sol";
+import {VaultLifecycleEarn} from "../../libraries/VaultLifecycleEarn.sol";
+import {ShareMath} from "../../libraries/ShareMath.sol";
+import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
+import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
 import {RibbonVault} from "./base/RibbonVault.sol";
 
 /**
@@ -32,29 +31,26 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
 
-    /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
-    address public immutable BORROWER;
-
-    /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
-    address public immutable OPTION_SELLER;
-
     /************************************************
      *  EVENTS
      ***********************************************/
 
-    event OpenLoan(
-        uint256 depositAmount,
-        address indexed manager
-    );
+    event OpenLoan(uint256 amount, address indexed receiver);
 
     event CloseLoan(
-        uint256 withdrawAmount,
-        address indexed manager
+        uint256 amount,
+        uint256 yield,
+        uint256 yearlyInterest,
+        address indexed receiver
     );
 
-    event PurchaseOption(
-        uint256 amount,
-        address indexed manager
+    event PurchaseOption(uint256 premium, address indexed receiver);
+
+    event PayOptionYield(
+        uint256 yield,
+        uint256 netYield,
+        uint256 pctPayoff,
+        address indexed receiver
     );
 
     event InstantWithdraw(
@@ -71,6 +67,8 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      * @notice Initialization parameters for the vault.
      * @param _owner is the owner of the vault with critical permissions
      * @param _feeRecipient is the address to recieve vault performance and management fees
+     * @param _borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+     * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
      * @param _managementFee is the management fee pct.
      * @param _performanceFee is the perfomance fee pct.
      * @param _tokenName is the name of the token
@@ -79,6 +77,8 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     struct InitParams {
         address _owner;
         address _keeper;
+        address _borrower;
+        address _optionSeller;
         address _feeRecipient;
         uint256 _managementFee;
         uint256 _performanceFee;
@@ -94,22 +94,8 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      * @notice Initializes the contract with immutable variables
      * @param _weth is the Wrapped Ether contract
      * @param _usdc is the USDC contract
-     * @param _borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
-     * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
      */
-    constructor(
-        address _weth,
-        address _usdc,
-        address _borrower,
-        address _optionSeller
-    )
-        RibbonVault(
-            _weth,
-            _usdc,
-            _borrower,
-            _optionSeller
-        )
-    {}
+    constructor(address _weth, address _usdc) RibbonVault(_weth, _usdc) {}
 
     /**
      * @notice Initializes the OptionVault contract with storage variables.
@@ -118,39 +104,27 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
      */
     function initialize(
         InitParams calldata _initParams,
-        Vault.VaultParams calldata _vaultParams
+        Vault.VaultParams calldata _vaultParams,
+        Vault.AllocationState calldata _allocationState
     ) external initializer {
         baseInitialize(
             _initParams._owner,
             _initParams._keeper,
             _initParams._feeRecipient,
+            _initParams._borrower,
+            _initParams._optionSeller,
             _initParams._managementFee,
             _initParams._performanceFee,
             _initParams._tokenName,
             _initParams._tokenSymbol,
-            _vaultParams
+            _vaultParams,
+            _allocationState
         );
     }
 
     /************************************************
      *  SETTERS
      ***********************************************/
-    //
-    //
-    // /**
-    //  * @notice Sets the new options premium pricer contract
-    //  * @param newOptionsPremiumPricer is the address of the new strike selection contract
-    //  */
-    // function setOptionsPremiumPricer(address newOptionsPremiumPricer)
-    //     external
-    //     onlyOwner
-    // {
-    //     require(
-    //         newOptionsPremiumPricer != address(0),
-    //         "!newOptionsPremiumPricer"
-    //     );
-    //     optionsPremiumPricer = newOptionsPremiumPricer;
-    // }
 
     /**
      * @notice Sets the new liquidityGauge contract for this vault
@@ -237,72 +211,13 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     }
 
     /**
-     * @notice Sets the next option the vault will be shorting, and closes the existing short.
-     */
-    function commitAndClose() external nonReentrant {
-        address oldOption = optionState.currentOption;
-
-        VaultLifecycle.CloseParams memory closeParams =
-            VaultLifecycle.CloseParams({
-                OTOKEN_FACTORY: OTOKEN_FACTORY,
-                USDC: USDC,
-                currentOption: oldOption,
-                delay: DELAY,
-                lastStrikeOverrideRound: lastStrikeOverrideRound,
-                overriddenStrikePrice: overriddenStrikePrice,
-                strikeSelection: strikeSelection,
-                optionsPremiumPricer: optionsPremiumPricer,
-                premiumDiscount: premiumDiscount
-            });
-
-        (address otokenAddress, uint256 strikePrice, uint256 delta) =
-            VaultLifecycle.commitAndClose(closeParams, vaultParams, vaultState);
-
-        emit NewOptionStrikeSelected(strikePrice, delta);
-
-        optionState.nextOption = otokenAddress;
-
-        uint256 nextOptionReady = block.timestamp.add(DELAY);
-        require(
-            nextOptionReady <= type(uint32).max,
-            "Overflow nextOptionReady"
-        );
-        optionState.nextOptionReadyAt = uint32(nextOptionReady);
-
-        _closeShort(oldOption);
-    }
-
-    /**
-     * @notice Closes the existing short position for the vault.
-     */
-    function _closeShort(address oldOption) private {
-        uint256 lockedAmount = vaultState.lockedAmount;
-        if (oldOption != address(0)) {
-            vaultState.lastLockedAmount = uint104(lockedAmount);
-        }
-        vaultState.lockedAmount = 0;
-
-        optionState.currentOption = address(0);
-
-        if (oldOption != address(0)) {
-            uint256 withdrawAmount =
-                VaultLifecycle.settleShort(GAMMA_CONTROLLER);
-            emit CloseShort(oldOption, withdrawAmount, msg.sender);
-        }
-    }
-
-    /**
      * @notice Rolls the vault's funds into a new short position.
      */
-    function rollToNextOption() external onlyKeeper nonReentrant {
+    function rollToNextRound() external onlyKeeper nonReentrant {
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
-        (
-            address newOption,
-            uint256 lockedBalance,
-            uint256 queuedWithdrawAmount
-        ) =
-            _rollToNextOption(
+        (uint256 lockedBalance, uint256 queuedWithdrawAmount) =
+            _rollToNextRound(
                 lastQueuedWithdrawAmount,
                 currQueuedWithdrawShares
             );
@@ -319,73 +234,148 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         currentQueuedWithdrawShares = 0;
 
         ShareMath.assertUint104(lockedBalance);
+        vaultState.lastLockedAmount = vaultState.lockedAmount;
         vaultState.lockedAmount = uint104(lockedBalance);
 
-        emit OpenShort(newOption, lockedBalance, msg.sender);
+        // Lend funds to borrower
+        IERC20(vaultParams.asset).safeTransfer(borrower, loanAllocation);
 
-        uint256 optionsMintAmount =
-            VaultLifecycle.createShort(
-                GAMMA_CONTROLLER,
-                MARGIN_POOL,
-                newOption,
-                lockedBalance
-            );
+        emit OpenLoan(loanAllocation, borrower);
+    }
 
-        VaultLifecycle.allocateOptions(
-            optionsPurchaseQueue,
-            newOption,
-            optionsMintAmount,
-            VaultLifecycle.QUEUE_OPTION_ALLOCATION
+    /**
+     * @notice Buys the option by transferring premiums to option seller
+     */
+    function buyOption() external onlyKeeper {
+        require(
+            block.timestamp >=
+                vaultState.lastOptionPurchaseTime.add(
+                    currentOptionPurchaseFreq
+                ),
+            "!earlypurchase"
         );
 
-        _startAuction();
+        IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
+
+        emit PurchaseOption(optionAllocation, optionSeller);
     }
 
     /**
-     * @notice Initiate the gnosis auction.
+     * @notice Pays option yield if option is ITM
+     * `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
+     * over the EIP712-formatted function arguments
+     * @param amount is the amount of yield to pay
+     * @param deadline must be a timestamp in the future
+     * @param v is a valid signature
+     * @param r is a valid signature
+     * @param s is a valid signature
      */
-    function startAuction() external onlyKeeper nonReentrant {
-        _startAuction();
-    }
+    function payOptionYield(
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external onlyOptionSeller {
+        // Sign for transfer approval
+        IERC20Permit(vaultParams.asset).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
 
-    function _startAuction() private {
-        GnosisAuction.AuctionDetails memory auctionDetails;
-
-        address currentOtoken = optionState.currentOption;
-
-        auctionDetails.oTokenAddress = currentOtoken;
-        auctionDetails.gnosisEasyAuction = GNOSIS_EASY_AUCTION;
-        auctionDetails.asset = vaultParams.asset;
-        auctionDetails.assetDecimals = vaultParams.decimals;
-        auctionDetails.oTokenPremium = currentOtokenPremium;
-        auctionDetails.duration = auctionDuration;
-
-        optionAuctionID = VaultLifecycle.startAuction(auctionDetails);
+        // Pay option yields to contract
+        _payOptionYield(amount);
     }
 
     /**
-     * @notice Sell the allocated options to the purchase queue post auction settlement
+     * @notice Pays option yield if option is ITM
+     * @param amount is the amount of yield to pay
      */
-    function sellOptionsToQueue() external onlyKeeper nonReentrant {
-        VaultLifecycle.sellOptionsToQueue(
-            optionsPurchaseQueue,
-            GNOSIS_EASY_AUCTION,
-            optionAuctionID
+    function payOptionYield(uint256 amount) external onlyOptionSeller {
+        // Pay option yields to contract
+        _payOptionYield(amount);
+    }
+
+    /**
+     * @notice Helper function that transfers funds from option
+     * seller
+     * @param amount is the amount of yield to pay
+     */
+    function _payOptionYield(uint256 amount) internal {
+        IERC20 asset = IERC20(vaultParams.asset);
+
+        asset.safeTransferFrom(msg.sender, address(this), amount);
+
+        emit PayOptionYield(
+            amount,
+            amount > optionAllocation ? amount.sub(optionAllocation) : 0,
+            // In %
+            amount > optionAllocation
+                ? amount.mul(10**2).div(optionAllocation).div(
+                    10**asset.decimals()
+                )
+                : 0,
+            address(this)
         );
     }
 
     /**
-     * @notice Burn the remaining oTokens left over from gnosis auction.
+     * @notice Return lend funds
+     * `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
+     * over the EIP712-formatted function arguments
+     * @param amount is the amount to return (principal + interest)
+     * @param deadline must be a timestamp in the future
+     * @param v is a valid signature
+     * @param r is a valid signature
+     * @param s is a valid signature
      */
-    function burnRemainingOTokens() external onlyKeeper nonReentrant {
-        uint256 unlockedAssetAmount =
-            VaultLifecycle.burnOtokens(
-                GAMMA_CONTROLLER,
-                optionState.currentOption
-            );
+    function returnLentFunds(
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external onlyBorrower {
+        // Sign for transfer approval
+        IERC20Permit(vaultParams.asset).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
 
-        vaultState.lockedAmount = uint104(
-            uint256(vaultState.lockedAmount).sub(unlockedAssetAmount)
+        // Return lent funds
+        _returnLentFunds(amount);
+    }
+
+    /**
+     * @notice Return lend funds
+     * @param amount is the amount to return (principal + interest)
+     */
+    function returnLentFunds(uint256 amount) external onlyBorrower {
+        // Return lent funds
+        _returnLentFunds(amount);
+    }
+
+    function _returnLentFunds(uint256 amount) internal {
+        asset.safeTransferFrom(msg.sender, address(this), amount);
+
+        uint256 yield =
+            amount > loanAllocation ? amount.sub(loanAllocation) : 0;
+
+        emit CloseLoan(
+            amount,
+            yield,
+            (yield * 12).mul(10**2).div(loanAllocation),
+            address(this)
         );
     }
 
