@@ -323,7 +323,7 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
         uint256 yieldInPCT =
             amount > optionAllocation
                 ? amount.mul(10**2).div(optionAllocation).div(
-                    10**IERC20Detailed(asset)).decimals()
+                    10**IERC20Detailed(asset).decimals()
                 )
                 : 0;
 
@@ -372,7 +372,11 @@ contract RibbonEarnVault is RibbonVault, RibbonEarnVaultStorage {
     }
 
     function _returnLentFunds(uint256 amount) internal {
-        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(vaultParams.asset).safeTransferFrom(
+            msg.sender,
+            address(this),
+            amount
+        );
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
