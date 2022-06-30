@@ -64,6 +64,9 @@ contract RibbonVault is
     /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
     address public borrower;
 
+    /// @notice pendingBorrower is the pending address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+    address public pendingBorrower;
+
     /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
     address public optionSeller;
 
@@ -275,7 +278,8 @@ contract RibbonVault is
         require(newBorrower != address(0), "!newBorrower");
         require(newBorrower != borrower, "Must be new borrower");
         emit BorrowerSet(borrower, newBorrower);
-        borrower = newBorrower;
+        pendingBorrower = newBorrower;
+        vaultState.lastBorrowerChange = block.timestamp;
     }
 
     /**
@@ -287,6 +291,17 @@ contract RibbonVault is
         require(newOptionSeller != optionSeller, "Must be new option seller");
         emit OptionSellerSet(optionSeller, newOptionSeller);
         optionSeller = newOptionSeller;
+    }
+
+    /**
+     * @notice Commits the pending borrower
+     */
+    function commitBorrower() external onlyOwner {
+        require(
+            block.timestamp >= vaultState.lastBorrowerChange.add(3 days),
+            "!timelock"
+        );
+        borrower = pendingBorrower;
     }
 
     /**
