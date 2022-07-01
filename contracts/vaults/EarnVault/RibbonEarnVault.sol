@@ -408,7 +408,7 @@ contract RibbonEarnVault is
     {
         require(
             _optionPurchaseFreq > 0 &&
-                ((!allocationState.nextLoanTermLength ||
+                ((allocationState.nextLoanTermLength == 0 ||
                     _optionPurchaseFreq <=
                     allocationState.nextLoanTermLength) ||
                     (_optionPurchaseFreq <=
@@ -775,6 +775,7 @@ contract RibbonEarnVault is
         ShareMath.assertUint104(lockedBalance);
         vaultState.lastLockedAmount = vaultState.lockedAmount;
         vaultState.lockedAmount = uint104(lockedBalance);
+        vaultState.numOfOptionPurchasesInRound = 0;
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
@@ -789,7 +790,8 @@ contract RibbonEarnVault is
      */
     function buyOption() external onlyKeeper {
         require(
-            block.timestamp >=
+            vaultState.numOfOptionPurchasesInRound == 0 ||
+                block.timestamp >=
                 uint256(vaultState.lastOptionPurchaseTime).add(
                     allocationState.currentOptionPurchaseFreq
                 ),
@@ -797,6 +799,8 @@ contract RibbonEarnVault is
         );
 
         uint256 optionAllocation = allocationState.optionAllocation;
+
+        vaultState.numOfOptionPurchasesInRound += 1;
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
 
