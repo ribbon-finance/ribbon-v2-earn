@@ -230,10 +230,12 @@ library VaultLifecycleEarn {
         uint256 totalPCT = 10000; // Equals 100%
 
         require(
-            uint256(_allocationState.nextLoanTermLength).add(
-                _allocationState.nextOptionPurchaseFreq
-            ) == 0,
-            "!nextLoanTermLength/!nextOptionPurchaseFreq"
+            _allocationState.nextLoanTermLength == 0,
+            "!nextLoanTermLength"
+        );
+        require(
+            _allocationState.nextOptionPurchaseFreq == 0,
+            "!nextOptionPurchaseFreq"
         );
         require(
             _allocationState.currentLoanTermLength >= 1 days,
@@ -251,11 +253,7 @@ library VaultLifecycleEarn {
             ) == totalPCT,
             "!totalPCT"
         );
-        require(
-            uint256(_allocationState.loanAllocation).add(
-                _allocationState.optionAllocation
-            ) == 0,
-            "!nextLoanTermLength/!optionAllocation"
-        );
+        require(_allocationState.loanAllocation == 0, "!loanAllocation");
+        require(_allocationState.optionAllocation == 0, "!optionAllocation");
     }
 }
