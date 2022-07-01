@@ -49,6 +49,8 @@ library Vault {
         // 32 byte slot 1
         //  Current round number. `round` represents the number of `period`s elapsed.
         uint16 round;
+        // Number of option purchases in round
+        uint16 numOfOptionPurchasesInRound;
         // Amount that is currently locked for the strategy
         uint104 lockedAmount;
         // Amount that was locked for the strategy in the previous round
