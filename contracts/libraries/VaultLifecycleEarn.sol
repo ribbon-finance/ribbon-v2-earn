@@ -182,7 +182,6 @@ library VaultLifecycleEarn {
 
     /**
      * @notice Verify the constructor params satisfy requirements
-     * @param owner is the owner of the vault with critical permissions
      * @param feeRecipient is the address to recieve vault performance and management fees
      * @param borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
      * @param optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
@@ -190,9 +189,9 @@ library VaultLifecycleEarn {
      * @param tokenName is the name of the token
      * @param tokenSymbol is the symbol of the token
      * @param _vaultParams is the struct with vault general data
+     * @param _allocationState is the struct with vault loan/option allocation data
      */
     function verifyInitializerParams(
-        address owner,
         address keeper,
         address feeRecipient,
         address borrower,
@@ -201,9 +200,9 @@ library VaultLifecycleEarn {
         uint256 managementFee,
         string calldata tokenName,
         string calldata tokenSymbol,
-        Vault.VaultParams calldata _vaultParams
+        Vault.VaultParams calldata _vaultParams,
+        Vault.AllocationState calldata _allocationState
     ) external pure {
-        require(owner != address(0), "!owner");
         require(keeper != address(0), "!keeper");
         require(feeRecipient != address(0), "!feeRecipient");
         require(borrower != address(0), "!borrower");
@@ -226,6 +225,37 @@ library VaultLifecycleEarn {
         require(
             _vaultParams.cap > _vaultParams.minimumSupply,
             "cap has to be higher than minimumSupply"
+        );
+
+        uint256 totalPCT = 10000; // Equals 100%
+
+        require(
+            uint256(_allocationState.nextLoanTermLength).add(
+                _allocationState.nextOptionPurchaseFreq
+            ) == 0,
+            "!nextLoanTermLength/!nextOptionPurchaseFreq"
+        );
+        require(
+            _allocationState.currentLoanTermLength >= 1 days,
+            "!currentLoanTermLength"
+        );
+        require(
+            _allocationState.currentOptionPurchaseFreq > 0 &&
+                _allocationState.currentOptionPurchaseFreq <=
+                _allocationState.currentLoanTermLength,
+            "!currentOptionPurchaseFreq"
+        );
+        require(
+            uint256(_allocationState.loanAllocationPCT).add(
+                _allocationState.optionAllocationPCT
+            ) == totalPCT,
+            "!totalPCT"
+        );
+        require(
+            uint256(_allocationState.loanAllocation).add(
+                _allocationState.optionAllocation
+            ) == 0,
+            "!nextLoanTermLength/!optionAllocation"
         );
     }
 }
