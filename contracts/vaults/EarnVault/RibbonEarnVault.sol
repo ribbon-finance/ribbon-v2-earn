@@ -408,7 +408,11 @@ contract RibbonEarnVault is
     {
         require(
             _optionPurchaseFreq > 0 &&
-                _optionPurchaseFreq <= allocationState.nextLoanTermLength,
+                ((!allocationState.nextLoanTermLength ||
+                    _optionPurchaseFreq <=
+                    allocationState.nextLoanTermLength) ||
+                    (_optionPurchaseFreq <=
+                        allocationState.currentLoanTermLength)),
             "!_optionPurchaseFreq"
         );
         allocationState.nextOptionPurchaseFreq = _optionPurchaseFreq;
