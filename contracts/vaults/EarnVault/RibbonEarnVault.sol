@@ -941,28 +941,6 @@ contract RibbonEarnVault is
     }
 
     /**
-     * @notice Helper function that transfers funds from option
-     * seller
-     * @param amount is the amount of yield to pay
-     */
-    function _payOptionYield(uint256 amount) internal {
-        address asset = vaultParams.asset;
-
-        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
-
-        uint256 optionAllocation = allocationState.optionAllocation;
-
-        uint256 yieldInUSD =
-            amount > optionAllocation ? amount.sub(optionAllocation) : 0;
-        uint256 yieldInPCT =
-            amount > optionAllocation
-                ? amount.mul(Vault.YIELD_MULTIPLIER).div(optionAllocation)
-                : 0;
-
-        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
-    }
-
-    /**
      * @notice Helper function that performs most administrative tasks
      * such as minting new shares, getting vault fees, etc.
      * @param lastQueuedWithdrawAmount is old queued withdraw amount
@@ -1035,6 +1013,28 @@ contract RibbonEarnVault is
         _updateAllocationState(lockedBalance);
 
         return (lockedBalance, queuedWithdrawAmount);
+    }
+
+    /**
+     * @notice Helper function that transfers funds from option
+     * seller
+     * @param amount is the amount of yield to pay
+     */
+    function _payOptionYield(uint256 amount) internal {
+        address asset = vaultParams.asset;
+
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+
+        uint256 optionAllocation = allocationState.optionAllocation;
+
+        uint256 yieldInUSD =
+            amount > optionAllocation ? amount.sub(optionAllocation) : 0;
+        uint256 yieldInPCT =
+            amount > optionAllocation
+                ? amount.mul(Vault.YIELD_MULTIPLIER).div(optionAllocation)
+                : 0;
+
+        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
     }
 
     function _returnLentFunds(uint256 amount) internal {
