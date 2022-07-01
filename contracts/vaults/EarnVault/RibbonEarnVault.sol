@@ -187,14 +187,16 @@ contract RibbonEarnVault is
      * @notice Initializes the OptionVault contract with storage variables.
      * @param _initParams is the struct with vault initialization parameters
      * @param _vaultParams is the struct with vault general data
+     * @param _allocationState is the struct with vault loan/option allocation data
      */
     function initialize(
         InitParams calldata _initParams,
         Vault.VaultParams calldata _vaultParams,
         Vault.AllocationState calldata _allocationState
     ) external initializer {
+        require(_initParams._owner != address(0), "!owner");
+
         VaultLifecycleEarn.verifyInitializerParams(
-            _initParams._owner,
             _initParams._keeper,
             _initParams._feeRecipient,
             _initParams._borrower,
@@ -203,7 +205,8 @@ contract RibbonEarnVault is
             _initParams._performanceFee,
             _initParams._tokenName,
             _initParams._tokenSymbol,
-            _vaultParams
+            _vaultParams,
+            _allocationState
         );
 
         __ReentrancyGuard_init();
