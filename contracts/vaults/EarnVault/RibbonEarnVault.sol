@@ -801,6 +801,7 @@ contract RibbonEarnVault is
         uint256 optionAllocation = allocationState.optionAllocation;
 
         vaultState.numOfOptionPurchasesInRound += 1;
+        vaultState.lastOptionPurchaseTime = block.timestamp;
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
 
