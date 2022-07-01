@@ -1085,7 +1085,7 @@ contract RibbonEarnVault is
         uint8 optionPurchasesPerLoanTerm =
             SafeCast.toUint8(
                 uint256(_allocationState.currentLoanTermLength).div(
-                    _allocationState.nextOptionPurchaseFreq
+                    _allocationState.currentOptionPurchaseFreq
                 )
             );
         // Set next option allocation from vault per purchase in USD
