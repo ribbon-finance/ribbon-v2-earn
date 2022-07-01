@@ -2494,101 +2494,6 @@ function behavesLikeRibbonOptionsVault(params: {
       });
     });
 
-    describe("#startAuction", () => {
-      let otoken: Contract;
-      let initialOtokenBalance: BigNumber;
-      let startOtokenPrice: BigNumber;
-      const depositAmount = params.depositAmount;
-
-      time.revertToSnapshotAfterEach(async function () {
-        await depositIntoVault(params.collateralAsset, vault, depositAmount);
-
-        await setupOracle(
-          params.asset,
-          params.chainlinkPricer,
-          ownerSigner,
-          params.protocol,
-          params.collateralAsset
-        );
-
-        await vault.connect(keeperSigner).setMinPrice(parseEther("0.01"));
-        await vault.connect(ownerSigner).commitAndClose();
-        startOtokenPrice = await vault.currentOtokenPremium();
-
-        await time.increaseTo((await vault.nextOptionReadyAt()).toNumber() + 1);
-
-        await vault.connect(keeperSigner).rollToNextRound();
-        const { currentOption } = await vault.optionState();
-        otoken = await ethers.getContractAt("IERC20", currentOption);
-        initialOtokenBalance = await otoken.balanceOf(gnosisAuction.address);
-      });
-
-      it("restarts the auction process", async () => {
-        await time.increaseTo(
-          (await provider.getBlock("latest")).timestamp + auctionDuration
-        );
-
-        // we simulate settling the auction without any bids
-        await gnosisAuction
-          .connect(userSigner)
-          .settleAuction(await gnosisAuction.auctionCounter());
-
-        const afterOtokenBalance = await otoken.balanceOf(vault.address);
-        assert.bnEqual(initialOtokenBalance, afterOtokenBalance);
-
-        // We increase the discount so the otoken min price should go down
-        await vault.connect(keeperSigner).setMinPrice(parseEther("0.001"));
-        await vault.connect(keeperSigner).startAuction();
-
-        assert.bnEqual(
-          await otoken.balanceOf(gnosisAuction.address),
-          initialOtokenBalance
-        );
-
-        // otoken price is decreased on the auction
-        const minPrice = await getAuctionMinPrice(gnosisAuction, tokenDecimals);
-        assert.bnLt(minPrice, startOtokenPrice);
-      });
-
-      it("reverts when first auction fully sells out", async () => {
-        await bidForOToken(
-          gnosisAuction,
-          assetContract,
-          userSigner.address,
-          defaultOtokenAddress,
-          parseEther("1"),
-          tokenDecimals,
-          "1",
-          auctionDuration
-        );
-
-        await time.increaseTo(
-          (await provider.getBlock("latest")).timestamp + auctionDuration
-        );
-
-        await gnosisAuction
-          .connect(userSigner)
-          .settleAuction(await gnosisAuction.auctionCounter());
-
-        await expect(
-          vault.connect(keeperSigner).startAuction()
-        ).to.be.revertedWith("No otokens to sell");
-      });
-
-      it("reverts when not keeper", async () => {
-        await time.increaseTo(
-          (await provider.getBlock("latest")).timestamp + auctionDuration
-        );
-
-        // we simulate settling the auction without any bids
-        await gnosisAuction
-          .connect(userSigner)
-          .settleAuction(await gnosisAuction.auctionCounter());
-
-        await expect(vault.startAuction()).to.be.revertedWith("!keeper");
-      });
-    });
-
     describe("#stake", () => {
       let liquidityGauge: Contract;
 
@@ -2781,24 +2686,6 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.equal(round2, 1);
         assert.bnEqual(amount2, BigNumber.from(0));
         assert.bnEqual(unredeemedShares2, BigNumber.from(0));
-      });
-    });
-
-    describe("#setStrikePrice", () => {
-      time.revertToSnapshotAfterEach();
-
-      it("should revert if not owner", async function () {
-        await expect(
-          vault.connect(userSigner).setStrikePrice(parseEther("10"))
-        ).to.be.revertedWith("Ownable: caller is not the owner");
-      });
-
-      it("should set the new strike price", async function () {
-        await vault.connect(ownerSigner).setStrikePrice(parseEther("10"));
-        assert.bnEqual(
-          BigNumber.from(await vault.overriddenStrikePrice()),
-          parseEther("10")
-        );
       });
     });
 
@@ -3069,8 +2956,7 @@ function behavesLikeRibbonOptionsVault(params: {
     if (
       chainId === CHAINID.ETH_MAINNET &&
       params.protocol === OPTION_PROTOCOL.GAMMA &&
-      params.mintConfig &&
-      params.collateralAsset !== RETH_ADDRESS[chainId]
+      params.mintConfig
     ) {
       describe("pricePerShare checks", () => {
         // Deposit 10000 tokens in the vault (5000 from user 0, 5000 from user 1)
