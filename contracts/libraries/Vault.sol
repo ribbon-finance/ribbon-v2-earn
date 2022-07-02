@@ -41,7 +41,7 @@ library Vault {
         uint16 optionAllocationPCT;
         // Loan Allocation in USD
         uint256 loanAllocation;
-        // Option Purchase Allocation per Purchase in USD
+        // Option Purchase Allocation across all purchases
         uint256 optionAllocation;
     }
 
