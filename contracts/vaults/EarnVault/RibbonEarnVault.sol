@@ -27,6 +27,7 @@ import {VaultLifecycleEarn} from "../../libraries/VaultLifecycleEarn.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
+import "hardhat/console.sol";
 
 /**
  * UPGRADEABILITY: Since we use the upgradeable proxy pattern, we must observe
@@ -309,8 +310,9 @@ contract RibbonEarnVault is
      * @notice Commits the pending borrower
      */
     function commitBorrower() external onlyOwner {
-        require(block.timestamp >= lastBorrowerChange + 3 days, "!timelock");
+        require(block.timestamp >= (lastBorrowerChange + 3 days), "!timelock");
         borrower = pendingBorrower;
+        pendingBorrower = address(0);
     }
 
     /**
@@ -408,11 +410,10 @@ contract RibbonEarnVault is
     {
         require(
             _optionPurchaseFreq > 0 &&
-                ((allocationState.nextLoanTermLength == 0 ||
-                    _optionPurchaseFreq <=
-                    allocationState.nextLoanTermLength) ||
+                ((allocationState.nextLoanTermLength == 0 &&
                     (_optionPurchaseFreq <=
-                        allocationState.currentLoanTermLength)),
+                        allocationState.currentLoanTermLength)) ||
+                    _optionPurchaseFreq <= allocationState.nextLoanTermLength),
             "!_optionPurchaseFreq"
         );
         allocationState.nextOptionPurchaseFreq = _optionPurchaseFreq;
@@ -798,10 +799,18 @@ contract RibbonEarnVault is
             "!earlypurchase"
         );
 
-        uint256 optionAllocation = allocationState.optionAllocation;
+        uint8 optionPurchasesPerLoanTerm =
+            SafeCast.toUint8(
+                uint256(allocationState.currentLoanTermLength).div(
+                    allocationState.currentOptionPurchaseFreq
+                )
+            );
+
+        uint256 optionAllocation =
+            allocationState.optionAllocation.div(optionPurchasesPerLoanTerm);
 
         vaultState.numOfOptionPurchasesInRound += 1;
-        vaultState.lastOptionPurchaseTime = block.timestamp;
+        vaultState.lastOptionPurchaseTime = uint64(block.timestamp);
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
 
@@ -1087,16 +1096,11 @@ contract RibbonEarnVault is
         )
             .mul(lockedBalance)
             .div(TOTAL_PCT);
-        uint8 optionPurchasesPerLoanTerm =
-            SafeCast.toUint8(
-                uint256(_allocationState.currentLoanTermLength).div(
-                    _allocationState.currentOptionPurchaseFreq
-                )
-            );
+
         // Set next option allocation from vault per purchase in USD
-        allocationState.optionAllocation = lockedBalance
-            .sub(_allocationState.loanAllocation)
-            .div(optionPurchasesPerLoanTerm);
+        allocationState.optionAllocation = lockedBalance.sub(
+            allocationState.loanAllocation
+        );
     }
 
     /************************************************
@@ -1181,9 +1185,9 @@ contract RibbonEarnVault is
      */
     function totalBalance() public view returns (uint256) {
         return
-            uint256(vaultState.lockedAmount).add(
-                IERC20(vaultParams.asset).balanceOf(address(this))
-            );
+            uint256(vaultState.lockedAmount)
+                .sub(allocationState.optionAllocation)
+                .add(IERC20(vaultParams.asset).balanceOf(address(this)));
     }
 
     /**
