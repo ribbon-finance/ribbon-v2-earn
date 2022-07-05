@@ -1,6 +1,6 @@
 import { ethers, network } from "hardhat";
 import { expect } from "chai";
-import { BigNumber, BigNumberish, constants, Contract } from "ethers";
+import { BigNumber, BigNumberish, constants, Contract, Wallet } from "ethers";
 import { parseUnits } from "ethers/lib/utils";
 import moment from "moment-timezone";
 import * as time from "./helpers/time";
@@ -18,6 +18,7 @@ import {
   deployProxy,
   mintToken,
   lockedBalanceForRollover,
+  generateWallet,
 } from "./helpers/utils";
 import { wmul } from "./helpers/math";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
@@ -55,8 +56,8 @@ describe("RibbonEarnVault", () => {
     performanceFee: BigNumber.from("20000000"),
     minimumSupply: BigNumber.from("10").pow("3").toString(),
     gasLimits: {
-      depositWorstCase: 116249,
-      depositBestCase: 99887,
+      depositWorstCase: 116273,
+      depositBestCase: 99911,
     },
     mintConfig: {
       amount: parseUnits("10000000", 6),
@@ -264,6 +265,7 @@ function behavesLikeRibbonOptionsVault(params: {
         borrowerSigner,
         optionSellerSigner,
       ] = await ethers.getSigners();
+
       owner = ownerSigner.address;
       keeper = keeperSigner.address;
       user = userSigner.address;
@@ -1612,10 +1614,23 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("sign and pay yield", async function () {
+        let weth = await getContractAt("IWETH", WETH_ADDRESS[chainId]);
+
+        let optionSellerWallet: Wallet = await generateWallet(
+          assetContract,
+          depositAmount,
+          userSigner,
+          weth
+        );
+
+        await vault
+          .connect(ownerSigner)
+          .setOptionSeller(optionSellerWallet.address);
+
         const result = await signERC2612Permit(
-          provider,
+          optionSellerWallet,
           assetContract.address,
-          optionSeller,
+          optionSellerWallet.address,
           vault.address,
           depositAmount.toString()
         );
@@ -1623,9 +1638,9 @@ function behavesLikeRibbonOptionsVault(params: {
         let balBefore = await assetContract.balanceOf(vault.address);
 
         await vault
-          .connect(optionSellerSigner)
+          .connect(optionSellerWallet)
           ["payOptionYield(uint256,uint256,uint8,bytes32,bytes32)"](
-            depositAmount,
+            10,
             result.deadline,
             result.v,
             result.r,
@@ -1701,7 +1716,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("sign and pay principal + interest", async function () {
         const result = await signERC2612Permit(
-          provider,
+          optionSellerSigner,
           assetContract.address,
           borrower,
           vault.address,
@@ -1744,9 +1759,11 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("adds option yield to vault", async function () {
+        let newDepositAmount = depositAmount.div(2);
+
         await assetContract
           .connect(borrowerSigner)
-          .approve(vault.address, depositAmount.mul(2));
+          .approve(vault.address, depositAmount);
 
         let amtFundsReturnedBefore = (await vault.vaultState())
           .amtFundsReturned;
@@ -1754,7 +1771,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let tx = await vault
           .connect(borrowerSigner)
-          ["returnLentFunds(uint256)"](depositAmount);
+          ["returnLentFunds(uint256)"](newDepositAmount);
 
         let amtFundsReturnedAfter = (await vault.vaultState()).amtFundsReturned;
         let totalBalanceAfter = await vault.totalBalance();
@@ -1762,20 +1779,24 @@ function behavesLikeRibbonOptionsVault(params: {
         // Test amount funds increased
         assert.bnEqual(
           amtFundsReturnedAfter.sub(amtFundsReturnedBefore),
-          depositAmount
+          newDepositAmount
         );
 
         // Test total balance stayed the same
         assert.bnEqual(totalBalanceAfter, totalBalanceBefore);
 
-        let totalToReturn = depositAmount.sub(
+        let totalToReturn = newDepositAmount.sub(
           (await vault.allocationState()).loanAllocation
         );
+
+        if (parseInt(totalToReturn.toString()) < 0) {
+          totalToReturn = BigNumber.from(0);
+        }
 
         await expect(tx)
           .to.emit(vault, "CloseLoan")
           .withArgs(
-            depositAmount,
+            newDepositAmount,
             totalToReturn,
             totalToReturn
               .mul(12)
@@ -1791,6 +1812,28 @@ function behavesLikeRibbonOptionsVault(params: {
         await expect(tx2)
           .to.emit(vault, "CloseLoan")
           .withArgs(1, 0, 0, borrower);
+      });
+
+      it("adds option yield to vault pt 2", async function () {
+        await assetContract
+          .connect(borrowerSigner)
+          .approve(vault.address, depositAmount);
+
+        let totalBalanceBefore = await vault.totalBalance();
+
+        let tx = await vault
+          .connect(borrowerSigner)
+          ["returnLentFunds(uint256)"](depositAmount);
+
+        let totalBalanceAfter = await vault.totalBalance();
+
+        // Diff from capping amtFundsReturned in total balance
+        let diff = depositAmount.sub(
+          (await vault.allocationState()).loanAllocation
+        );
+
+        // Test total balance stayed the same
+        assert.bnEqual(totalBalanceAfter, totalBalanceBefore.add(diff));
       });
     });
 
