@@ -1568,6 +1568,69 @@ function behavesLikeRibbonOptionsVault(params: {
         ).to.be.revertedWith("!ready");
       });
 
+      it("transfers funds to borrower", async function () {
+        let balBefore = await assetContract.balanceOf(borrower);
+
+        await vault.connect(keeperSigner).rollToNextRound();
+
+        let balAfter = await assetContract.balanceOf(borrower);
+
+        // Loan allocation PCT of the vault's balance is allocated to loan
+        assert.bnEqual(
+          balAfter.sub(balBefore),
+          (await vault.allocationState()).loanAllocation
+        );
+      });
+
+      it("updates allocation state", async function () {
+        let newLoanTermLength = 86400;
+        let newOptionPurchaseFrequency = 43200;
+
+        await vault.connect(ownerSigner).setLoanTermLength(newLoanTermLength);
+        await vault
+          .connect(ownerSigner)
+          .setOptionPurchaseFrequency(newOptionPurchaseFrequency);
+
+        await rollToNextRound(true, true, false);
+
+        // Sets new loan term length / option purchase frequency
+
+        assert.equal((await vault.allocationState()).nextLoanTermLength, 0);
+        assert.equal(
+          (await vault.allocationState()).currentLoanTermLength,
+          newLoanTermLength
+        );
+
+        assert.equal((await vault.allocationState()).nextOptionPurchaseFreq, 0);
+        assert.equal(
+          (await vault.allocationState()).currentOptionPurchaseFreq,
+          newOptionPurchaseFrequency
+        );
+
+        // Sets correct allocation for loan / option purchases
+
+        assert.equal(
+          (await vault.allocationState()).loanAllocation,
+          (await vault.allocationState()).loanAllocationPCT
+            .mul((await vault.vaultState()).lockedAmount)
+            .div(await vault.TOTAL_PCT())
+        );
+        assert.equal(
+          (await vault.allocationState()).optionAllocation,
+          (await vault.vaultState()).lockedAmount.sub(
+            (await vault.allocationState()).loanAllocation
+          )
+        );
+
+        let now = await time.now();
+
+        // Sets correct lastEpochTime
+        assert.equal(
+          (await vaultState()).lastEpochTime,
+          now.sub(BigNumber.from(parseInt(now.toString()) % 86400)).add(28800)
+        );
+      });
+
       it("withdraws and roll funds into next round, after breaking even", async function () {
         const firstTx = await vault.connect(keeperSigner).rollToNextRound();
 
@@ -1585,18 +1648,7 @@ function behavesLikeRibbonOptionsVault(params: {
         const beforeBalance = await assetContract.balanceOf(vault.address);
 
         // For breaking even
-        let interest = BigNumber.from(
-          (await vault.allocationState()).optionAllocation
-        );
-        let totalToReturn = BigNumber.from(
-          (await vault.allocationState()).loanAllocation
-        ).add(interest);
-        await assetContract
-          .connect(borrowerSigner)
-          .approve(vault.address, totalToReturn);
-        let firstCloseTx = await vault
-          .connect(borrowerSigner)
-          ["returnLentFunds(uint256)"](totalToReturn);
+        await repayInterest();
 
         const afterBalance = await assetContract.balanceOf(vault.address);
 
