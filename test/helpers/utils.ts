@@ -3,30 +3,12 @@ import { increaseTo } from "./time";
 import WBTC_ABI from "../../constants/abis/WBTC.json";
 import {
   CHAINID,
-  GAMMA_ORACLE,
-  GAMMA_WHITELIST,
-  GAMMA_WHITELIST_OWNER,
-  ORACLE_DISPUTE_PERIOD,
-  ORACLE_LOCKING_PERIOD,
-  ORACLE_OWNER,
   USDC_ADDRESS,
   APE_ADDRESS,
   RETH_ADDRESS,
   WBTC_ADDRESS,
   SAVAX_ADDRESS,
-  YEARN_PRICER_OWNER,
   SAVAX_PRICER,
-  GAMMA_CONTROLLER,
-  OTOKEN_FACTORY,
-  MARGIN_POOL,
-  TD_CONTROLLER,
-  TD_OTOKEN_FACTORY,
-  TD_MARGIN_POOL,
-  TD_ORACLE,
-  TD_ORACLE_OWNER,
-  TD_WHITELIST,
-  TD_WHITELIST_OWNER,
-  CHAINLINK_WETH_PRICER,
 } from "../../constants/constants";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { BigNumber, BigNumberish, Contract } from "ethers";

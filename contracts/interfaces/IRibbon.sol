@@ -11,8 +11,5 @@ interface IRibbonVault {
 
     function depositFor(uint256 amount, address creditor) external;
 
-    function vaultParams()
-        external
-        view
-        returns (Vault.VaultParams memory);
+    function vaultParams() external view returns (Vault.VaultParams memory);
 }
