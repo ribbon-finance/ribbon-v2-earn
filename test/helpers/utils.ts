@@ -87,7 +87,7 @@ export async function generateWallet(
   owner: SignerWithAddress,
   weth: Contract
 ) {
-  let provider = new ethers.providers.JsonRpcProvider(process.env.MAINNET_URI);
+  let provider = new ethers.providers.JsonRpcProvider(process.env.TEST_URI);
   let signer = new ethers.Wallet(
     "0ce495bd7bab5341ae5a7ac195173fba1aa56f6561e35e1fec6176e2519ab8da",
     provider
