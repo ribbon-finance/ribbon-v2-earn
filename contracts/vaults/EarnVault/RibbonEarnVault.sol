@@ -798,7 +798,7 @@ contract RibbonEarnVault is
                 uint256(vaultState.lastOptionPurchaseTime).add(
                     allocationState.currentOptionPurchaseFreq
                 ),
-            "!earlypurchase"
+            "!delayedpurchase"
         );
 
         uint8 optionPurchasesPerLoanTerm =

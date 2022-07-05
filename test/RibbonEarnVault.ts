@@ -1532,6 +1532,69 @@ function behavesLikeRibbonOptionsVault(params: {
       });
     });
 
+    describe("#buyOption", () => {
+      const depositAmount = params.depositAmount;
+
+      time.revertToSnapshotAfterEach(async function () {
+        await depositIntoVault(params.collateralAsset, vault, depositAmount);
+      });
+
+      it("reverts when not called with keeper", async function () {
+        await expect(vault.connect(ownerSigner).buyOption()).to.be.revertedWith(
+          "!keeper"
+        );
+      });
+
+      it("reverts when not called in correct schedule", async function () {
+        await vault.connect(keeperSigner).rollToNextRound();
+        await vault.connect(keeperSigner).buyOption();
+        await expect(
+          vault.connect(keeperSigner).buyOption()
+        ).to.be.revertedWith("!delayedpurchase");
+      });
+
+      it("it transfers correct amount to option seller", async function () {
+        await vault.connect(keeperSigner).rollToNextRound();
+
+        let optionsBoughtInRoundBefore = (await vault.vaultState())
+          .optionsBoughtInRound;
+
+        let balBefore = await assetContract.balanceOf(optionSeller);
+
+        let t = await time.now();
+
+        // Buy option
+        await vault.connect(keeperSigner).buyOption();
+
+        let optionsBoughtInRoundAfter = (await vault.vaultState())
+          .optionsBoughtInRound;
+
+        let balAfter = await assetContract.balanceOf(optionSeller);
+
+        let optionPurchasesPerLoanTerm = (
+          await vault.allocationState()
+        ).currentLoanTermLength.div(
+          (await vault.allocationState()).currentOptionPurchaseFreq
+        );
+
+        let optionAllocation = (
+          await vault.allocationState()
+        ).optionAllocation.div(optionPurchasesPerLoanTerm);
+
+        // Updates amount of options bought
+        assert.bnEqual(
+          optionsBoughtInRoundAfter.sub(optionsBoughtInRoundBefore),
+          optionAllocation
+        );
+
+        // Sends assets to option seller
+        assert.bnEqual(balAfter.sub(balBefore), optionAllocation);
+
+        // Updates last purchase time
+        assert.bnEqual((await vault.vaultState()).lastOptionPurchaseTime, t);
+      });
+    });
+
     describe("#rollToNextRound", () => {
       const depositAmount = params.depositAmount;
 
