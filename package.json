@@ -89,6 +89,7 @@
     "cron": "^1.8.2",
     "discord.js": "^12.5.3",
     "dotenv": "^10.0.0",
+    "eth-permit": "^0.2.1",
     "got": "^10.7.0",
     "json-stable-stringify": "^1.0.1",
     "moment-timezone": "^0.5.33",
