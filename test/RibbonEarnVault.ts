@@ -796,9 +796,13 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("set pending borrower", async function () {
         assert.equal(await vault.borrower(), borrower);
-        await vault.connect(ownerSigner).setBorrower(owner);
+        let tx = await vault.connect(ownerSigner).setBorrower(owner);
         assert.equal(await vault.borrower(), borrower);
         assert.equal(await vault.pendingBorrower(), owner);
+
+        await expect(tx)
+          .to.emit(vault, "BorrowerSet")
+          .withArgs(borrower, owner);
       });
 
       it("reverts when not owner call", async function () {
@@ -844,8 +848,12 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("set option seller", async function () {
         assert.equal(await vault.optionSeller(), optionSeller);
-        await vault.connect(ownerSigner).setOptionSeller(owner);
+        let tx = await vault.connect(ownerSigner).setOptionSeller(owner);
         assert.equal(await vault.optionSeller(), owner);
+
+        await expect(tx)
+          .to.emit(vault, "OptionSellerSet")
+          .withArgs(optionSeller, owner);
       });
 
       it("reverts when not owner call", async function () {
@@ -864,7 +872,7 @@ function behavesLikeRibbonOptionsVault(params: {
           loanAllocationPCT
         );
 
-        await vault
+        let tx = await vault
           .connect(ownerSigner)
           .setLoanAllocationPCT(loanAllocationPCT.div(2));
         assert.equal(
@@ -875,6 +883,17 @@ function behavesLikeRibbonOptionsVault(params: {
           (await vault.allocationState()).optionAllocationPCT,
           BigNumber.from(await vault.TOTAL_PCT()).sub(loanAllocationPCT.div(2))
         );
+
+        await expect(tx)
+          .to.emit(vault, "NewLoanOptionAllocationSet")
+          .withArgs(
+            loanAllocationPCT,
+            optionAllocationPCT,
+            loanAllocationPCT.div(2),
+            BigNumber.from(await vault.TOTAL_PCT()).sub(
+              loanAllocationPCT.div(2)
+            )
+          );
       });
 
       it("reverts when loanAllocationPCT > TOTAL_PCT", async function () {
@@ -899,12 +918,23 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("set new loan term length", async function () {
         assert.equal((await vault.allocationState()).nextLoanTermLength, 0);
-        await vault.connect(ownerSigner).setLoanTermLength(86400);
+        let tx = await vault.connect(ownerSigner).setLoanTermLength(86400);
         assert.equal((await vault.allocationState()).nextLoanTermLength, 86400);
         assert.equal(
           (await vault.allocationState()).currentLoanTermLength,
           loanTermLength
         );
+
+        await expect(tx)
+          .to.emit(vault, "NewLoanTermLength")
+          .withArgs(
+            (
+              await vault.allocationState()
+            ).currentLoanTermLength,
+            (
+              await vault.allocationState()
+            ).nextLoanTermLength
+          );
       });
 
       it("reverts when loanTermLength < 1 day", async function () {
@@ -925,7 +955,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("set new option purchase frequency", async function () {
         assert.equal((await vault.allocationState()).nextOptionPurchaseFreq, 0);
-        await vault
+        let tx = await vault
           .connect(ownerSigner)
           .setOptionPurchaseFrequency(loanTermLength.div(2));
         assert.equal(
@@ -936,6 +966,17 @@ function behavesLikeRibbonOptionsVault(params: {
           (await vault.allocationState()).currentOptionPurchaseFreq,
           optionPurchaseFreq
         );
+
+        await expect(tx)
+          .to.emit(vault, "NewOptionPurchaseFrequency")
+          .withArgs(
+            (
+              await vault.allocationState()
+            ).currentOptionPurchaseFreq,
+            (
+              await vault.allocationState()
+            ).nextOptionPurchaseFreq
+          );
       });
 
       it("reverts when _optionPurchaseFreq = 0", async function () {
@@ -1208,7 +1249,7 @@ function behavesLikeRibbonOptionsVault(params: {
           );
 
           const result = await signERC2612Permit(
-            optionSellerWallet,
+            rdmWallet,
             assetContract.address,
             rdmWallet.address,
             vault.address,
@@ -1254,7 +1295,7 @@ function behavesLikeRibbonOptionsVault(params: {
           );
 
           const result = await signERC2612Permit(
-            optionSellerWallet,
+            rdmWallet,
             assetContract.address,
             rdmWallet.address,
             vault.address,
@@ -1682,7 +1723,7 @@ function behavesLikeRibbonOptionsVault(params: {
         let t = await time.now();
 
         // Buy option
-        await vault.connect(keeperSigner).buyOption();
+        let tx = await vault.connect(keeperSigner).buyOption();
 
         let optionsBoughtInRoundAfter = (await vault.vaultState())
           .optionsBoughtInRound;
@@ -1711,6 +1752,10 @@ function behavesLikeRibbonOptionsVault(params: {
           (await vault.vaultState()).lastOptionPurchaseTime,
           t.add(1)
         );
+
+        await expect(tx)
+          .to.emit(vault, "PurchaseOption")
+          .withArgs(optionAllocation, optionSeller);
       });
     });
 
@@ -2137,7 +2182,7 @@ function behavesLikeRibbonOptionsVault(params: {
         );
       });
 
-      it("withdraws and roll funds into next option, after expiry OTM", async function () {
+      it("withdraws and roll funds into next option, after bought options expiry ITM", async function () {
         const firstTx = await vault.connect(keeperSigner).rollToNextRound();
 
         await expect(firstTx)
@@ -2254,7 +2299,7 @@ function behavesLikeRibbonOptionsVault(params: {
         );
       });
 
-      it("withdraws and roll funds into next option, after expiry OTM (initiateWithdraw)", async function () {
+      it("withdraws and roll funds into next option, after bought options expiry ITM (initiateWithdraw)", async function () {
         await depositIntoVault(
           params.collateralAsset,
           vault,
@@ -2547,7 +2592,7 @@ function behavesLikeRibbonOptionsVault(params: {
           .withArgs(user, params.depositAmount, 2);
       });
 
-      it("is able to redeem deposit at correct pricePerShare after closing short in the money", async function () {
+      it("is able to redeem deposit at correct pricePerShare after closing with options bought expiry OTM", async function () {
         await assetContract
           .connect(userSigner)
           .approve(vault.address, params.depositAmount);
@@ -2588,7 +2633,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         // owner should lose money
         // User should not lose money
-        // owner redeems the deposit from round 1 so there is a loss from ITM options
+        // owner redeems the deposit from round 1 so there is a loss from OTM bought options
         const tx1 = await vault.connect(ownerSigner).maxRedeem();
         await expect(tx1)
           .to.emit(vault, "Redeem")
@@ -3681,7 +3726,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
           await vault.connect(userSigner).initiateWithdraw(depositAmount); // User 1 initiates 5000 shares withdraw
 
-          await rollToNextRound(false, false); // Process ITM expiry
+          await rollToNextRound(false, false); // Process bought OTM expiry
 
           /* ===== ROUND 3 ===== */
 
