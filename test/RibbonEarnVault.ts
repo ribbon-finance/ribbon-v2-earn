@@ -44,7 +44,7 @@ describe("RibbonEarnVault", () => {
     assetContractName:
       chainId === CHAINID.AVAX_MAINNET ? "IBridgeToken" : "IWBTC",
     collateralAsset: USDC_ADDRESS[chainId],
-    tokenDecimals: 8,
+    tokenDecimals: 6,
     loanTermLength: BigNumber.from("28").mul(SECONDS_PER_DAY),
     optionPurchaseFreq: BigNumber.from("7").mul(SECONDS_PER_DAY),
     loanAllocationPCT: BigNumber.from("9900"),
@@ -208,9 +208,12 @@ function behavesLikeRibbonOptionsVault(params: {
 
     const rollToNextRound = async (
       buyOption: boolean = true,
-      repay: boolean = true
+      repay: boolean = true,
+      rollFirst: boolean = true
     ) => {
-      await vault.connect(keeperSigner).rollToNextRound();
+      if (rollFirst) {
+        await vault.connect(keeperSigner).rollToNextRound();
+      }
 
       if (buyOption) {
         await buyAllOptions();
@@ -224,8 +227,14 @@ function behavesLikeRibbonOptionsVault(params: {
         BigNumber.from((await vault.allocationState()).currentLoanTermLength)
       );
 
-      if ((await time.now()) < newTime) {
+      if (
+        parseInt((await time.now()).toString()) < parseInt(newTime.toString())
+      ) {
         await time.increaseTo(newTime);
+      }
+
+      if (!rollFirst) {
+        await vault.connect(keeperSigner).rollToNextRound();
       }
     };
 
@@ -2038,9 +2047,7 @@ function behavesLikeRibbonOptionsVault(params: {
           .approve(vault.address, params.depositAmount.mul(2));
         await vault.deposit(params.depositAmount);
 
-        await rollToNextRound();
-        await buyAllOptions();
-        await repayInterest();
+        await rollToNextRound(false, false, false);
 
         await vault.deposit(params.depositAmount);
 
@@ -2060,13 +2067,15 @@ function behavesLikeRibbonOptionsVault(params: {
           .connect(ownerSigner)
           .approve(vault.address, params.depositAmount);
 
+        await vault.connect(keeperSigner).rollToNextRound();
+
         // Mid-week deposit in round 1
         await assetContract
           .connect(userSigner)
           .transfer(owner, params.depositAmount);
         await vault.connect(ownerSigner).deposit(params.depositAmount);
 
-        await rollToNextRound();
+        await rollToNextRound(true, true, false);
 
         // Mid-week deposit in round 2
         await vault.connect(userSigner).deposit(params.depositAmount);
@@ -2077,11 +2086,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         const beforePps = await vault.pricePerShare();
 
-        await rollToNextRound(false, false);
-
-        await assetContract
-          .connect(userSigner)
-          .transfer(vault.address, params.depositAmount.div(10000));
+        await rollToNextRound(false, false, false);
 
         const afterBalance = await vault.totalBalance();
         const afterPps = await vault.pricePerShare();
@@ -2098,33 +2103,32 @@ function behavesLikeRibbonOptionsVault(params: {
         const tx1 = await vault.connect(ownerSigner).maxRedeem();
         await expect(tx1)
           .to.emit(vault, "Redeem")
-          .withArgs(owner, params.depositAmount, 1);
+          .withArgs(owner, params.depositAmount, 2);
 
         const {
           round: round1,
           amount: amount1,
           unredeemedShares: unredeemedShares1,
         } = await vault.depositReceipts(owner);
-        assert.equal(round1, 1);
+        assert.equal(round1, 2);
         assert.bnEqual(amount1, BigNumber.from(0));
         assert.bnEqual(unredeemedShares1, BigNumber.from(0));
         assert.bnEqual(await vault.balanceOf(owner), params.depositAmount);
-        console.log("hello");
-        console.log(afterPps.toString());
-        console.log(expectedMintAmountAfterLoss.toString());
+
         // User deposit in round 2 so no loss
         // we should use the pps after the loss which is the lower pps
         const tx2 = await vault.connect(userSigner).maxRedeem();
+
         await expect(tx2)
           .to.emit(vault, "Redeem")
-          .withArgs(user, expectedMintAmountAfterLoss, 2);
+          .withArgs(user, expectedMintAmountAfterLoss, 3);
 
         const {
           round: round2,
           amount: amount2,
           unredeemedShares: unredeemedShares2,
         } = await vault.depositReceipts(user);
-        assert.equal(round2, 2);
+        assert.equal(round2, 3);
         assert.bnEqual(amount2, BigNumber.from(0));
         assert.bnEqual(unredeemedShares2, BigNumber.from(0));
         assert.bnEqual(
