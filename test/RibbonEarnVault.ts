@@ -1190,6 +1190,121 @@ function behavesLikeRibbonOptionsVault(params: {
       });
     }
 
+    // Only apply to when assets is USDC
+    if (params.collateralAsset === USDC_ADDRESS[chainId]) {
+      describe("#depositWithPermit", () => {
+        time.revertToSnapshotAfterEach();
+
+        it("creates a pending deposit", async function () {
+          const startBalance = await assetContract.balanceOf(user);
+
+          let weth = await getContractAt("IWETH", WETH_ADDRESS[chainId]);
+
+          let rdmWallet: Wallet = await generateWallet(
+            assetContract,
+            depositAmount,
+            userSigner,
+            weth
+          );
+
+          const result = await signERC2612Permit(
+            optionSellerWallet,
+            assetContract.address,
+            rdmWallet.address,
+            vault.address,
+            depositAmount.toString()
+          );
+
+          const res = await vault
+            .connect(rdmWallet)
+            .depositWithPermit(
+              depositAmount,
+              result.deadline,
+              result.v,
+              result.r,
+              result.s
+            );
+
+          assert.bnEqual(
+            await assetContract.balanceOf(user),
+            startBalance.sub(depositAmount)
+          );
+          assert.isTrue((await vault.totalSupply()).isZero());
+          assert.isTrue((await vault.balanceOf(user)).isZero());
+          await expect(res)
+            .to.emit(vault, "Deposit")
+            .withArgs(user, depositAmount, 1);
+
+          assert.bnEqual(await vault.totalPending(), depositAmount);
+          const { round, amount } = await vault.depositReceipts(user);
+          assert.equal(round, 1);
+          assert.bnEqual(amount, depositAmount);
+        });
+
+        it("fits gas budget for deposits [ @skip-on-coverage ]", async function () {
+          await vault.connect(ownerSigner).deposit(depositAmount);
+
+          let weth = await getContractAt("IWETH", WETH_ADDRESS[chainId]);
+
+          let rdmWallet: Wallet = await generateWallet(
+            assetContract,
+            depositAmount.mul(2),
+            userSigner,
+            weth
+          );
+
+          const result = await signERC2612Permit(
+            optionSellerWallet,
+            assetContract.address,
+            rdmWallet.address,
+            vault.address,
+            depositAmount.mul(2).toString()
+          );
+
+          const tx1 = await vault
+            .connect(rdmWallet)
+            .depositWithPermit(
+              depositAmount,
+              result.deadline,
+              result.v,
+              result.r,
+              result.s
+            );
+
+          const receipt1 = await tx1.wait();
+          assert.isAtMost(
+            receipt1.gasUsed.toNumber(),
+            params.gasLimits.depositWorstCase
+          );
+
+          const tx2 = await vault
+            .connect(rdmWallet)
+            .depositWithPermit(
+              depositAmount,
+              result.deadline,
+              result.v,
+              result.r,
+              result.s
+            );
+
+          const receipt2 = await tx2.wait();
+          assert.isAtMost(
+            receipt2.gasUsed.toNumber(),
+            params.gasLimits.depositBestCase
+          );
+        });
+      });
+    } else {
+      describe("#depositWithPermit", () => {
+        it("reverts when asset is not USDC", async function () {
+          const depositAmount = parseEther("1");
+          await expect(
+            vault.depositWithPermit(depositAmount)
+          ).to.be.revertedWith("!USDC");
+        });
+      });
+    }
+
     describe("#deposit", () => {
       time.revertToSnapshotAfterEach();
 

@@ -455,6 +455,47 @@ contract RibbonEarnVault is
     }
 
     /**
+     * @notice Deposits the `asset` from msg.sender without an approve
+     * `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
+     * over the EIP712-formatted function arguments
+     * @param amount is the amount of `asset` to deposit
+     * @param deadline must be a timestamp in the future
+     * @param v is a valid signature
+     * @param r is a valid signature
+     * @param s is a valid signature
+     */
+    function depositWithPermit(
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant {
+        require(vaultParams.asset == USDC, "!USDC");
+        require(amount > 0, "!amount");
+
+        // Sign for transfer approval
+        IERC20Permit(vaultParams.asset).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
+
+        _depositFor(amount, msg.sender);
+
+        // An approve() by the msg.sender is required beforehand
+        IERC20(vaultParams.asset).safeTransferFrom(
+            msg.sender,
+            address(this),
+            amount
+        );
+    }
+
+    /**
      * @notice Deposits the `asset` from msg.sender.
      * @param amount is the amount of `asset` to deposit
      */
