@@ -54,8 +54,8 @@ describe("RibbonEarnVault", () => {
     performanceFee: BigNumber.from("20000000"),
     minimumSupply: BigNumber.from("10").pow("3").toString(),
     gasLimits: {
-      depositWorstCase: 109531,
-      depositBestCase: 93169,
+      depositWorstCase: 116249,
+      depositBestCase: 99887,
     },
     mintConfig: {
       amount: parseUnits("10000000", 6),
@@ -165,34 +165,6 @@ function behavesLikeRibbonOptionsVault(params: {
   describe(`${params.name}`, () => {
     let initSnapshotId: string;
 
-    const rollToNextRound = async () => {
-      await vault.connect(keeperSigner).rollToNextRound();
-
-      await time.increaseTo(
-        (
-          await vault.vaultState()
-        ).lastEpochTime.add(
-          BigNumber.from((await vault.allocationState()).currentLoanTermLength)
-        )
-      );
-
-      let interest = BigNumber.from(
-        (await vault.allocationState()).optionAllocation
-      );
-
-      let totalToReturn = BigNumber.from(
-        (await vault.allocationState()).loanAllocation
-      ).add(interest);
-
-      await assetContract
-        .connect(borrowerSigner)
-        .approve(vault.address, totalToReturn);
-
-      await vault
-        .connect(borrowerSigner)
-        ["returnLentFunds(uint256)"](totalToReturn);
-    };
-
     const buyAllOptions = async () => {
       for (
         let i = 0;
@@ -217,27 +189,44 @@ function behavesLikeRibbonOptionsVault(params: {
       }
     };
 
-    const rollToSecondRound = async () => {
-      await time.increaseTo(
-        (await vault.vaultState()).lastEpochTime +
-          (
-            await vault.allocationState()
-          ).currentLoanTermLength
-      );
-      await vault.connect(keeperSigner).rollToNextRound();
-
+    const repayInterest = async () => {
+      // Repay Interest
       let interest = BigNumber.from(
         (await vault.allocationState()).optionAllocation
       );
       let totalToReturn = (await vault.allocationState()).loanAllocation.add(
         interest
       );
+
       await assetContract
         .connect(borrowerSigner)
         .approve(vault.address, totalToReturn);
-      await assetContract
+      await vault
         .connect(borrowerSigner)
         ["returnLentFunds(uint256)"](totalToReturn);
+    };
+
+    const rollToNextRound = async (
+      buyOption: boolean = true,
+      repay: boolean = true
+    ) => {
+      await vault.connect(keeperSigner).rollToNextRound();
+
+      if (buyOption) {
+        await buyAllOptions();
+      }
+
+      if (repay) {
+        await repayInterest();
+      }
+
+      let newTime = (await vault.vaultState()).lastEpochTime.add(
+        BigNumber.from((await vault.allocationState()).currentLoanTermLength)
+      );
+
+      if ((await time.now()) < newTime) {
+        await time.increaseTo(newTime);
+      }
     };
 
     before(async function () {
@@ -1582,9 +1571,9 @@ function behavesLikeRibbonOptionsVault(params: {
             await vault.borrower()
           );
 
-        const beforeBalance = await assetContract.balanceOf(vault.address);
-
         await buyAllOptions();
+
+        const beforeBalance = await assetContract.balanceOf(vault.address);
 
         // For breaking even
         let interest = BigNumber.from(
@@ -1610,7 +1599,15 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(firstCloseTx)
           .to.emit(vault, "CloseLoan")
-          .withArgs(totalToReturn, 0, 0, borrower);
+          .withArgs(
+            totalToReturn,
+            interest,
+            interest
+              .mul(12)
+              .mul(100)
+              .div((await vault.allocationState()).loanAllocation),
+            borrower
+          );
 
         // Time increase to next round
         await time.increaseTo(
@@ -1654,22 +1651,21 @@ function behavesLikeRibbonOptionsVault(params: {
             await vault.borrower()
           );
 
-        const beforeBalance = await assetContract.balanceOf(vault.address);
-
         await buyAllOptions();
+
+        const beforeBalance = await assetContract.balanceOf(vault.address);
 
         // For earning yield
         let yieldAmount = BigNumber.from(
           (await vault.allocationState()).optionAllocation
         ).mul(2);
         await assetContract
-          .connect(optionSeller)
+          .connect(optionSellerSigner)
           .approve(vault.address, yieldAmount);
-        await assetContract
-          .connect(optionSeller)
+        await vault
+          .connect(optionSellerSigner)
           ["payOptionYield(uint256)"](yieldAmount);
 
-        console.log("here");
         // Repay Interest
         let interest = BigNumber.from(
           (await vault.allocationState()).optionAllocation
@@ -1677,16 +1673,18 @@ function behavesLikeRibbonOptionsVault(params: {
         let totalToReturn = (await vault.allocationState()).loanAllocation.add(
           interest
         );
-        await assetContract.connect(borrowerSigner).approve(totalToReturn);
-        let firstCloseTx = await assetContract
+        await assetContract
+          .connect(borrowerSigner)
+          .approve(vault.address, totalToReturn);
+        let firstCloseTx = await vault
           .connect(borrowerSigner)
           ["returnLentFunds(uint256)"](totalToReturn);
 
         const afterBalance = await assetContract.balanceOf(vault.address);
 
-        // test that the vault's balance stayed same
+        // test that the vault's balance increased when earning yield
         assert.equal(
-          parseInt(depositAmount.toString()),
+          parseInt(depositAmount.add(yieldAmount).toString()),
           parseInt(BigNumber.from(afterBalance).sub(beforeBalance).toString())
         );
 
@@ -1694,8 +1692,8 @@ function behavesLikeRibbonOptionsVault(params: {
           .to.emit(vault, "CloseLoan")
           .withArgs(
             totalToReturn,
-            yieldAmount,
-            yieldAmount
+            interest,
+            interest
               .mul(12)
               .mul(100)
               .div((await vault.allocationState()).loanAllocation),
@@ -1754,10 +1752,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         assert.equal(
           (await assetContract.balanceOf(vault.address)).toString(),
-          depositAmount
-            .add(yieldAmount)
-            .mul(optionAllocationPCT)
-            .div(await vault.TOTAL_PCT())
+          (await vault.allocationState()).optionAllocation
         );
       });
 
@@ -1811,12 +1806,16 @@ function behavesLikeRibbonOptionsVault(params: {
         for (
           let i = 0;
           i <
-          (await vault.allocationState()).loanTermLength.div(
-            (await vault.allocationState()).optionPurchaseFreq
+          parseInt(
+            BigNumber.from(
+              (await vault.allocationState()).currentLoanTermLength
+            )
+              .div((await vault.allocationState()).currentOptionPurchaseFreq)
+              .toString()
           );
           i++
         ) {
-          await assetContract.connect(keeperSigner).buyOption();
+          await vault.connect(keeperSigner).buyOption();
           await time.increaseTo(
             (
               await vault.vaultState()
@@ -1833,10 +1832,10 @@ function behavesLikeRibbonOptionsVault(params: {
           2
         );
         await assetContract
-          .connect(optionSeller)
+          .connect(optionSellerSigner)
           .approve(vault.address, yieldAmount);
-        await assetContract
-          .connect(optionSeller)
+        await vault
+          .connect(optionSellerSigner)
           ["payOptionYield(uint256)"](yieldAmount);
 
         // Repay Interest
@@ -1848,26 +1847,10 @@ function behavesLikeRibbonOptionsVault(params: {
         );
         await assetContract
           .connect(borrowerSigner)
-          .approve(
-            vault.address,
-            (
-              await vault.allocationState()
-            ).loanAllocation
-          );
-        let firstCloseTx = await assetContract
+          .approve(vault.address, totalToReturn2);
+        let firstCloseTx = await vault
           .connect(borrowerSigner)
           ["returnLentFunds(uint256)"](totalToReturn2);
-
-        // Time increase to next round
-        await time.increaseTo(
-          (
-            await vault.vaultState()
-          ).lastEpochTime.add(
-            (
-              await vault.allocationState()
-            ).currentLoanTermLength
-          )
-        );
 
         let pendingAmount = (await vault.vaultState()).totalPending;
         let [secondInitialLockedBalance, queuedWithdrawAmount] =
@@ -1917,24 +1900,8 @@ function behavesLikeRibbonOptionsVault(params: {
         // totalBalance should remain the same before and after roll
         const secondStartBalance = await vault.totalBalance();
 
-        // Repay Interest
-        let interest = BigNumber.from(
-          (await vault.allocationState()).optionAllocation
-        );
-        let totalToReturn = (await vault.allocationState()).loanAllocation.add(
-          interest
-        );
-        await assetContract
-          .connect(borrowerSigner)
-          .approve(
-            vault.address,
-            (
-              await vault.allocationState()
-            ).loanAllocation
-          );
-        await assetContract
-          .connect(borrowerSigner)
-          ["returnLentFunds(uint256)"](totalToReturn);
+        await buyAllOptions();
+        await repayInterest();
 
         // Time increase to next round
         await time.increaseTo(
@@ -1955,16 +1922,6 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("fits gas budget [ @skip-on-coverage ]", async function () {
-        await time.increaseTo(
-          (
-            await vault.vaultState()
-          ).lastEpochTime.add(
-            (
-              await vault.allocationState()
-            ).currentLoanTermLength
-          )
-        );
-
         const tx = await vault.connect(keeperSigner).rollToNextRound();
         const receipt = await tx.wait();
 
@@ -1980,7 +1937,7 @@ function behavesLikeRibbonOptionsVault(params: {
           params.depositAmount
         );
 
-        await rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
       });
 
       it("returns the free balance - locked, if free > locked", async function () {
@@ -1989,13 +1946,15 @@ function behavesLikeRibbonOptionsVault(params: {
 
         assert.bnEqual(
           await assetContract.balanceOf(vault.address),
-          newDepositAmount
+          newDepositAmount.add((await vault.allocationState()).optionAllocation)
         );
       });
     });
 
     describe("#maxRedeem", () => {
       let oracle: Contract;
+
+      time.revertToSnapshotAfterEach(async function () {});
 
       it("is able to redeem deposit at new price per share", async function () {
         await assetContract
@@ -2004,12 +1963,14 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await vault.deposit(params.depositAmount);
 
-        await rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         const tx = await vault.maxRedeem();
 
         assert.bnEqual(
-          await assetContract.balanceOf(vault.address),
+          (await assetContract.balanceOf(vault.address)).sub(
+            (await vault.allocationState()).optionAllocation
+          ),
           BigNumber.from(0)
         );
         assert.bnEqual(await vault.balanceOf(user), params.depositAmount);
@@ -2035,12 +1996,14 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await vault.deposit(params.depositAmount);
 
-        await rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         await vault.maxRedeem();
 
         assert.bnEqual(
-          await assetContract.balanceOf(vault.address),
+          (await assetContract.balanceOf(vault.address)).sub(
+            (await vault.allocationState()).optionAllocation
+          ),
           BigNumber.from(0)
         );
         assert.bnEqual(await vault.balanceOf(user), params.depositAmount);
@@ -2059,9 +2022,12 @@ function behavesLikeRibbonOptionsVault(params: {
         await expect(res).to.not.emit(vault, "Transfer");
 
         assert.bnEqual(
-          await assetContract.balanceOf(vault.address),
+          (await assetContract.balanceOf(vault.address)).sub(
+            (await vault.allocationState()).optionAllocation
+          ),
           BigNumber.from(0)
         );
+
         assert.bnEqual(await vault.balanceOf(user), params.depositAmount);
         assert.bnEqual(await vault.balanceOf(vault.address), BigNumber.from(0));
       });
@@ -2071,7 +2037,10 @@ function behavesLikeRibbonOptionsVault(params: {
           .connect(userSigner)
           .approve(vault.address, params.depositAmount.mul(2));
         await vault.deposit(params.depositAmount);
+
         await rollToNextRound();
+        await buyAllOptions();
+        await repayInterest();
 
         await vault.deposit(params.depositAmount);
 
@@ -2104,26 +2073,21 @@ function behavesLikeRibbonOptionsVault(params: {
 
         const vaultState = await vault.vaultState();
 
-        const beforeBalance = (
-          await assetContract.balanceOf(vault.address)
-        ).add(vaultState.lockedAmount);
+        const beforeBalance = await vault.totalBalance();
 
         const beforePps = await vault.pricePerShare();
 
-        const AMOUNT = {
-          [CHAINID.ETH_MAINNET]: "100000000000",
-          [CHAINID.AVAX_MAINNET]: "1000000000",
-        };
+        await rollToNextRound(false, false);
 
-        await rollToNextRound();
+        await assetContract
+          .connect(userSigner)
+          .transfer(vault.address, params.depositAmount.div(10000));
 
-        const afterBalance = await assetContract.balanceOf(vault.address);
+        const afterBalance = await vault.totalBalance();
         const afterPps = await vault.pricePerShare();
         const expectedMintAmountAfterLoss = params.depositAmount
           .mul(BigNumber.from(10).pow(params.tokenDecimals))
           .div(afterPps);
-
-        await rollToNextRound();
 
         assert.bnGt(beforeBalance, afterBalance);
         assert.bnGt(beforePps, afterPps);
@@ -2145,7 +2109,9 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.bnEqual(amount1, BigNumber.from(0));
         assert.bnEqual(unredeemedShares1, BigNumber.from(0));
         assert.bnEqual(await vault.balanceOf(owner), params.depositAmount);
-
+        console.log("hello");
+        console.log(afterPps.toString());
+        console.log(expectedMintAmountAfterLoss.toString());
         // User deposit in round 2 so no loss
         // we should use the pps after the loss which is the lower pps
         const tx2 = await vault.connect(userSigner).maxRedeem();
@@ -2516,8 +2482,7 @@ function behavesLikeRibbonOptionsVault(params: {
           .approve(vault.address, depositAmount);
         await vault.connect(ownerSigner).deposit(depositAmount);
 
-        await rollToNextRound();
-
+        await vault.connect(keeperSigner).rollToNextRound();
         await vault.initiateWithdraw(depositAmount);
       });
 
@@ -2534,7 +2499,17 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("reverts when calling completeWithdraw twice", async function () {
-        await rollToSecondRound();
+        await repayInterest();
+        await time.increaseTo(
+          (
+            await vault.vaultState()
+          ).lastEpochTime.add(
+            (
+              await vault.allocationState()
+            ).currentLoanTermLength
+          )
+        );
+        await vault.connect(keeperSigner).rollToNextRound();
 
         await vault.completeWithdraw();
 
@@ -2544,7 +2519,22 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("completes the withdrawal", async function () {
-        await rollToSecondRound();
+        // await repayInterest();
+        await buyAllOptions();
+        await assetContract
+          .connect(userSigner)
+          .transfer(vault.address, depositAmount);
+
+        await time.increaseTo(
+          (
+            await vault.vaultState()
+          ).lastEpochTime.add(
+            (
+              await vault.allocationState()
+            ).currentLoanTermLength
+          )
+        );
+        await vault.connect(keeperSigner).rollToNextRound();
 
         const pricePerShare = await vault.roundPricePerShare(2);
         const withdrawAmount = depositAmount
@@ -2609,7 +2599,18 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("fits gas budget [ @skip-on-coverage ]", async function () {
-        await rollToSecondRound();
+        await repayInterest();
+
+        await time.increaseTo(
+          (
+            await vault.vaultState()
+          ).lastEpochTime.add(
+            (
+              await vault.allocationState()
+            ).currentLoanTermLength
+          )
+        );
+        await vault.connect(keeperSigner).rollToNextRound();
 
         const tx = await vault.completeWithdraw({ gasPrice });
         const receipt = await tx.wait();
@@ -3047,12 +3048,7 @@ function behavesLikeRibbonOptionsVault(params: {
           BigNumber.from(depositAmount)
         );
 
-        const AMOUNT = {
-          [CHAINID.ETH_MAINNET]: "100000000000",
-          [CHAINID.AVAX_MAINNET]: "1000000000",
-        };
-
-        await rollToSecondRound();
+        await rollToNextRound(true, false);
 
         // Minus 1 due to rounding errors from share price != 1
         assert.bnLt(
@@ -3117,7 +3113,7 @@ function behavesLikeRibbonOptionsVault(params: {
           await vault.connect(userSigner).initiateWithdraw(depositAmount); // User 1 initiates 5000 shares withdraw
 
           assert.bnEqual(await vault.totalBalance(), totalDepositAmount); // 10000 tokens
-          await rollToSecondRound(); // Process withdraws
+          await rollToNextRound(); // Process withdraws
           assert.bnEqual(await vault.totalSupply(), totalDepositAmount); // 10000 shares
 
           /* ===== ROUND 3 ===== */
@@ -3146,7 +3142,7 @@ function behavesLikeRibbonOptionsVault(params: {
             await vault.totalBalance(),
             totalDepositAmount.add(premiumAmount)
           ); // 10050 tokens
-          await rollToSecondRound(); // Process premiums/withdraws
+          await rollToNextRound(); // Process premiums/withdraws
           assert.bnEqual(await vault.totalSupply(), totalDepositAmount); // 10000 shares
 
           /* ===== ROUND 4 ===== */
@@ -3192,7 +3188,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
           await vault.connect(userSigner).initiateWithdraw(depositAmount); // User 1 initiates 5000 shares withdraw
 
-          await rollToSecondRound();
+          await rollToNextRound(false, false); // Process ITM expiry
 
           /* ===== ROUND 3 ===== */
 
@@ -3204,9 +3200,9 @@ function behavesLikeRibbonOptionsVault(params: {
           await vault.connect(ownerSigner).initiateWithdraw(depositAmount); // User 0 initiates 5000 share withdraw
 
           assert.bnEqual(await vault.totalBalance(), totalDepositAmount); // 10000 tokens
-          await rollToSecondRound(); // Process ITM expiry
-          // Vault has ~9090.9090909 tokens
-          // console.log((await vault.totalBalance()).toString());
+
+          await rollToNextRound();
+
           assert.bnLt(await vault.totalBalance(), totalDepositAmount); // totalBalance < 10000 tokens
           assert.bnEqual(await vault.totalSupply(), totalDepositAmount); // 10000 shares
 
@@ -3374,7 +3370,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("process withdrawal", async function () {
         // Roll again to process
-        await rollToSecondRound();
+        await rollToNextRound();
 
         const pricePerShare = await vault.roundPricePerShare(2);
         const withdrawAmount = depositAmount
@@ -3412,14 +3408,14 @@ function behavesLikeRibbonOptionsVault(params: {
       describe("process and pause again", () => {
         it("process withdrawal and pause again", async function () {
           // Roll and Process
-          await rollToSecondRound();
+          await rollToNextRound();
           await pauser.connect(keeperSigner).processWithdrawal(vault.address);
           // Deposit and Pause again
           await assetContract
             .connect(userSigner)
             .approve(vault.address, depositAmount);
           await vault.connect(userSigner).deposit(depositAmount);
-          await rollToSecondRound();
+          await rollToNextRound();
           await expect(vault.pausePosition()).to.be.revertedWith(
             "Position is paused"
           );
@@ -3485,7 +3481,7 @@ function behavesLikeRibbonOptionsVault(params: {
       it("resume position", async function () {
         await vault.pausePosition();
 
-        await rollToSecondRound();
+        await rollToNextRound();
 
         await pauser.connect(keeperSigner).processWithdrawal(vault.address, {
           gasPrice,
