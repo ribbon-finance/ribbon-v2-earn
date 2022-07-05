@@ -1190,14 +1190,19 @@ contract RibbonEarnVault is
      * @return total balance of the vault, including the amounts locked in third party protocols
      */
     function totalBalance() public view returns (uint256) {
+        uint256 lockedForOptionPurchases = allocationState.optionAllocation;
+
+        uint256 amtPrincipalReturned =
+            vaultState.amtFundsReturned > allocationState.loanAllocation
+                ? allocationState.loanAllocation
+                : vaultState.amtFundsReturned;
+
+        // We subtract the funds allocated towards option purchases as these are "lost funds"
+        // We subtract the amount of principal returned to avoid double counting in locked amount / USDC balance
         return
             uint256(vaultState.lockedAmount)
-                .sub(allocationState.optionAllocation)
-                .sub(
-                vaultState.amtFundsReturned > allocationState.loanAllocation
-                    ? allocationState.loanAllocation
-                    : vaultState.amtFundsReturned
-            )
+                .sub(lockedForOptionPurchases)
+                .sub(amtPrincipalReturned)
                 .add(IERC20(vaultParams.asset).balanceOf(address(this)));
     }
 

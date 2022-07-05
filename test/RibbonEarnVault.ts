@@ -4,6 +4,7 @@ import { BigNumber, BigNumberish, constants, Contract } from "ethers";
 import { parseUnits } from "ethers/lib/utils";
 import moment from "moment-timezone";
 import * as time from "./helpers/time";
+import { signERC2612Permit } from "eth-permit";
 import {
   BLOCK_NUMBER,
   CHAINID,
@@ -1571,11 +1572,9 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let balAfter = await assetContract.balanceOf(optionSeller);
 
-        let optionPurchasesPerLoanTerm = (
-          await vault.allocationState()
-        ).currentLoanTermLength.div(
-          (await vault.allocationState()).currentOptionPurchaseFreq
-        );
+        let optionPurchasesPerLoanTerm = BigNumber.from(
+          (await vault.allocationState()).currentLoanTermLength
+        ).div((await vault.allocationState()).currentOptionPurchaseFreq);
 
         let optionAllocation = (
           await vault.allocationState()
@@ -1591,7 +1590,207 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.bnEqual(balAfter.sub(balBefore), optionAllocation);
 
         // Updates last purchase time
-        assert.bnEqual((await vault.vaultState()).lastOptionPurchaseTime, t);
+        assert.bnEqual(
+          (await vault.vaultState()).lastOptionPurchaseTime,
+          t.add(1)
+        );
+      });
+    });
+
+    describe("#payOptionYield", () => {
+      const depositAmount = params.depositAmount;
+
+      time.revertToSnapshotAfterEach(async function () {
+        await depositIntoVault(params.collateralAsset, vault, depositAmount);
+        await vault.connect(keeperSigner).rollToNextRound();
+      });
+
+      it("reverts when not called with option seller", async function () {
+        await expect(
+          vault.connect(ownerSigner)["payOptionYield(uint256)"](100)
+        ).to.be.revertedWith("!optionSeller");
+      });
+
+      it("sign and pay yield", async function () {
+        const result = await signERC2612Permit(
+          provider,
+          assetContract.address,
+          optionSeller,
+          vault.address,
+          depositAmount.toString()
+        );
+
+        let balBefore = await assetContract.balanceOf(vault.address);
+
+        await vault
+          .connect(optionSellerSigner)
+          ["payOptionYield(uint256,uint256,uint8,bytes32,bytes32)"](
+            depositAmount,
+            result.deadline,
+            result.v,
+            result.r,
+            result.s
+          );
+
+        let balAfter = await assetContract.balanceOf(vault.address);
+
+        // Received USDC
+        assert.bnEqual(balAfter.sub(balBefore), depositAmount);
+      });
+
+      it("approve and pay yield", async function () {
+        await assetContract
+          .connect(optionSellerSigner)
+          .approve(vault.address, depositAmount);
+
+        let balBefore = await assetContract.balanceOf(vault.address);
+
+        await vault
+          .connect(optionSellerSigner)
+          ["payOptionYield(uint256)"](depositAmount);
+
+        let balAfter = await assetContract.balanceOf(vault.address);
+
+        // Received USDC
+        assert.bnEqual(balAfter.sub(balBefore), depositAmount);
+      });
+
+      it("adds option yield to vault", async function () {
+        await assetContract
+          .connect(optionSellerSigner)
+          .approve(vault.address, depositAmount.mul(2));
+
+        let tx = await vault
+          .connect(optionSellerSigner)
+          ["payOptionYield(uint256)"](depositAmount);
+
+        let yieldInUSD = depositAmount.sub(
+          (await vault.allocationState()).optionAllocation
+        );
+        let yieldInPCT = depositAmount
+          .mul(100)
+          .div((await vault.allocationState()).optionAllocation);
+
+        await expect(tx)
+          .to.emit(vault, "PayOptionYield")
+          .withArgs(depositAmount, yieldInUSD, yieldInPCT, optionSeller);
+
+        let tx2 = await vault
+          .connect(optionSellerSigner)
+          ["payOptionYield(uint256)"](1);
+
+        await expect(tx2)
+          .to.emit(vault, "PayOptionYield")
+          .withArgs(1, 0, 0, optionSeller);
+      });
+    });
+
+    describe("#returnLentFunds", () => {
+      const depositAmount = params.depositAmount;
+
+      time.revertToSnapshotAfterEach(async function () {
+        await depositIntoVault(params.collateralAsset, vault, depositAmount);
+        await vault.connect(keeperSigner).rollToNextRound();
+      });
+
+      it("reverts when not called with borrower", async function () {
+        await expect(
+          vault.connect(ownerSigner)["returnLentFunds(uint256)"](100)
+        ).to.be.revertedWith("!borrower");
+      });
+
+      it("sign and pay principal + interest", async function () {
+        const result = await signERC2612Permit(
+          provider,
+          assetContract.address,
+          borrower,
+          vault.address,
+          depositAmount.toString()
+        );
+
+        let balBefore = await assetContract.balanceOf(vault.address);
+
+        await vault
+          .connect(borrowerSigner)
+          ["returnLentFunds(uint256,uint256,uint8,bytes32,bytes32)"](
+            depositAmount,
+            result.deadline,
+            result.v,
+            result.r,
+            result.s
+          );
+
+        let balAfter = await assetContract.balanceOf(vault.address);
+
+        // Received USDC
+        assert.bnEqual(balAfter.sub(balBefore), depositAmount);
+      });
+
+      it("approve and pay principal + interest", async function () {
+        await assetContract
+          .connect(borrowerSigner)
+          .approve(vault.address, depositAmount);
+
+        let balBefore = await assetContract.balanceOf(vault.address);
+
+        await vault
+          .connect(borrowerSigner)
+          ["returnLentFunds(uint256)"](depositAmount);
+
+        let balAfter = await assetContract.balanceOf(vault.address);
+
+        // Received USDC
+        assert.bnEqual(balAfter.sub(balBefore), depositAmount);
+      });
+
+      it("adds option yield to vault", async function () {
+        await assetContract
+          .connect(borrowerSigner)
+          .approve(vault.address, depositAmount.mul(2));
+
+        let amtFundsReturnedBefore = (await vault.vaultState())
+          .amtFundsReturned;
+        let totalBalanceBefore = await vault.totalBalance();
+
+        let tx = await vault
+          .connect(borrowerSigner)
+          ["returnLentFunds(uint256)"](depositAmount);
+
+        let amtFundsReturnedAfter = (await vault.vaultState()).amtFundsReturned;
+        let totalBalanceAfter = await vault.totalBalance();
+
+        // Test amount funds increased
+        assert.bnEqual(
+          amtFundsReturnedAfter.sub(amtFundsReturnedBefore),
+          depositAmount
+        );
+
+        // Test total balance stayed the same
+        assert.bnEqual(totalBalanceAfter, totalBalanceBefore);
+
+        let totalToReturn = depositAmount.sub(
+          (await vault.allocationState()).loanAllocation
+        );
+
+        await expect(tx)
+          .to.emit(vault, "CloseLoan")
+          .withArgs(
+            depositAmount,
+            totalToReturn,
+            totalToReturn
+              .mul(12)
+              .mul(100)
+              .div((await vault.allocationState()).loanAllocation),
+            borrower
+          );
+
+        let tx2 = await vault
+          .connect(borrowerSigner)
+          ["returnLentFunds(uint256)"](1);
+
+        await expect(tx2)
+          .to.emit(vault, "CloseLoan")
+          .withArgs(1, 0, 0, borrower);
       });
     });
 
@@ -1671,26 +1870,29 @@ function behavesLikeRibbonOptionsVault(params: {
         );
 
         // Sets correct allocation for loan / option purchases
-
         assert.equal(
-          (await vault.allocationState()).loanAllocation,
-          (await vault.allocationState()).loanAllocationPCT
+          (await vault.allocationState()).loanAllocation.toString(),
+          BigNumber.from((await vault.allocationState()).loanAllocationPCT)
             .mul((await vault.vaultState()).lockedAmount)
             .div(await vault.TOTAL_PCT())
+            .toString()
         );
         assert.equal(
-          (await vault.allocationState()).optionAllocation,
-          (await vault.vaultState()).lockedAmount.sub(
-            (await vault.allocationState()).loanAllocation
-          )
+          (await vault.allocationState()).optionAllocation.toString(),
+          (await vault.vaultState()).lockedAmount
+            .sub((await vault.allocationState()).loanAllocation)
+            .toString()
         );
 
         let now = await time.now();
 
         // Sets correct lastEpochTime
         assert.equal(
-          (await vaultState()).lastEpochTime,
-          now.sub(BigNumber.from(parseInt(now.toString()) % 86400)).add(28800)
+          (await vault.vaultState()).lastEpochTime.toString(),
+          now
+            .sub(BigNumber.from(parseInt(now.toString()) % 86400))
+            .add(28800)
+            .toString()
         );
       });
 
@@ -1711,7 +1913,21 @@ function behavesLikeRibbonOptionsVault(params: {
         const beforeBalance = await assetContract.balanceOf(vault.address);
 
         // For breaking even
-        await repayInterest();
+
+        // Repay Interest
+        let interest = BigNumber.from(
+          (await vault.allocationState()).optionAllocation
+        );
+        let totalToReturn = (await vault.allocationState()).loanAllocation.add(
+          interest
+        );
+
+        await assetContract
+          .connect(borrowerSigner)
+          .approve(vault.address, totalToReturn);
+        let firstCloseTx = await vault
+          .connect(borrowerSigner)
+          ["returnLentFunds(uint256)"](totalToReturn);
 
         const afterBalance = await assetContract.balanceOf(vault.address);
 
