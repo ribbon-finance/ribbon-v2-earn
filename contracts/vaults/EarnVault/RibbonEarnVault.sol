@@ -27,7 +27,6 @@ import {VaultLifecycleEarn} from "../../libraries/VaultLifecycleEarn.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
-import "hardhat/console.sol";
 
 /**
  * UPGRADEABILITY: Since we use the upgradeable proxy pattern, we must observe
@@ -754,6 +753,8 @@ contract RibbonEarnVault is
      * @notice Rolls the vault's funds into a new short position.
      */
     function rollToNextRound() external onlyKeeper nonReentrant {
+        vaultState.lastLockedAmount = uint104(vaultState.lockedAmount);
+
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
         (uint256 lockedBalance, uint256 queuedWithdrawAmount) =
@@ -774,9 +775,10 @@ contract RibbonEarnVault is
         currentQueuedWithdrawShares = 0;
 
         ShareMath.assertUint104(lockedBalance);
-        vaultState.lastLockedAmount = vaultState.lockedAmount;
+
         vaultState.lockedAmount = uint104(lockedBalance);
-        vaultState.numOfOptionPurchasesInRound = 0;
+        vaultState.optionsBoughtInRound = 0;
+        vaultState.amtFundsReturned = 0;
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
@@ -791,7 +793,7 @@ contract RibbonEarnVault is
      */
     function buyOption() external onlyKeeper {
         require(
-            vaultState.numOfOptionPurchasesInRound == 0 ||
+            vaultState.optionsBoughtInRound == 0 ||
                 block.timestamp >=
                 uint256(vaultState.lastOptionPurchaseTime).add(
                     allocationState.currentOptionPurchaseFreq
@@ -809,7 +811,7 @@ contract RibbonEarnVault is
         uint256 optionAllocation =
             allocationState.optionAllocation.div(optionPurchasesPerLoanTerm);
 
-        vaultState.numOfOptionPurchasesInRound += 1;
+        vaultState.optionsBoughtInRound += uint104(optionAllocation);
         vaultState.lastOptionPurchaseTime = uint64(block.timestamp);
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
@@ -1058,10 +1060,14 @@ contract RibbonEarnVault is
         uint256 yield =
             amount > loanAllocation ? amount.sub(loanAllocation) : 0;
 
+        vaultState.amtFundsReturned += uint104(amount);
+
         emit CloseLoan(
             amount,
             yield,
-            (yield * 12).mul(10**2).div(loanAllocation),
+            loanAllocation > 0
+                ? (yield * 12).mul(10**2).div(loanAllocation)
+                : 0,
             msg.sender
         );
     }
@@ -1180,13 +1186,18 @@ contract RibbonEarnVault is
     }
 
     /**
-     * @notice Returns the vault's total balance, including the amounts locked into a short position
+     * @notice Returns the vault's total balance, including the amounts lent out
      * @return total balance of the vault, including the amounts locked in third party protocols
      */
     function totalBalance() public view returns (uint256) {
         return
             uint256(vaultState.lockedAmount)
                 .sub(allocationState.optionAllocation)
+                .sub(
+                vaultState.amtFundsReturned > allocationState.loanAllocation
+                    ? allocationState.loanAllocation
+                    : vaultState.amtFundsReturned
+            )
                 .add(IERC20(vaultParams.asset).balanceOf(address(this)));
     }
 

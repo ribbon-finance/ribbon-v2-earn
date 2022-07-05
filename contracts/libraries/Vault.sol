@@ -49,8 +49,8 @@ library Vault {
         // 32 byte slot 1
         //  Current round number. `round` represents the number of `period`s elapsed.
         uint16 round;
-        // Number of option purchases in round
-        uint16 numOfOptionPurchasesInRound;
+        // Amount of options bought in current round
+        uint104 optionsBoughtInRound;
         // Amount that is currently locked for the strategy
         uint104 lockedAmount;
         // Amount that was locked for the strategy in the previous round
@@ -66,6 +66,8 @@ library Vault {
         uint64 lastEpochTime;
         // Last Option Purchase Date
         uint64 lastOptionPurchaseTime;
+        // Amount of funds returned this round
+        uint104 amtFundsReturned;
     }
 
     struct DepositReceipt {
