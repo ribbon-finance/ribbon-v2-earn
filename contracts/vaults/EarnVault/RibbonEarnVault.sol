@@ -1201,9 +1201,9 @@ contract RibbonEarnVault is
         // We subtract the amount of principal returned to avoid double counting in locked amount / USDC balance
         return
             uint256(vaultState.lockedAmount)
+                .add(IERC20(vaultParams.asset).balanceOf(address(this)))
                 .sub(lockedForOptionPurchases)
-                .sub(amtPrincipalReturned)
-                .add(IERC20(vaultParams.asset).balanceOf(address(this)));
+                .sub(amtPrincipalReturned);
     }
 
     /**
