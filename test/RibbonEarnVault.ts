@@ -1026,7 +1026,7 @@ function behavesLikeRibbonOptionsVault(params: {
                 ).currentLoanTermLength
               ).add(1)
             )
-        ).to.be.revertedWith("!_optionPurchaseFreq");
+        ).to.be.revertedWith("! _optionPurchaseFreq < loanTermLength");
       });
 
       it("reverts when _optionPurchaseFreq > _nextLoanTermLength", async function () {
@@ -1034,7 +1034,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.connect(ownerSigner).setOptionPurchaseFrequency(86401)
-        ).to.be.revertedWith("!_optionPurchaseFreq");
+        ).to.be.revertedWith("! _optionPurchaseFreq < loanTermLength");
       });
 
       it("reverts when not owner call", async function () {
