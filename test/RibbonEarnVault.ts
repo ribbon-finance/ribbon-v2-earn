@@ -6,7 +6,6 @@ import moment from "moment-timezone";
 import * as time from "./helpers/time";
 import { signERC2612Permit } from "eth-permit";
 import {
-  BLOCK_NUMBER,
   CHAINID,
   WETH_ADDRESS,
   USDC_ADDRESS,
@@ -20,7 +19,6 @@ import {
   lockedBalanceForRollover,
   generateWallet,
 } from "./helpers/utils";
-import { wmul } from "./helpers/math";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { assert } from "./helpers/assertions";
 import { TEST_URI } from "../scripts/helpers/getDefaultEthersProvider";
@@ -1843,7 +1841,7 @@ function behavesLikeRibbonOptionsVault(params: {
           (await vault.allocationState()).optionAllocation
         );
         let yieldInPCT = depositAmount
-          .mul(100)
+          .mul(YIELD_SCALING)
           .div((await vault.allocationState()).optionAllocation);
 
         await expect(tx)
@@ -1981,7 +1979,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let totalBalanceBefore = await vault.totalBalance();
 
-        let tx = await vault
+        await vault
           .connect(borrowerSigner)
           ["returnLentFunds(uint256)"](depositAmount);
 
@@ -2163,7 +2161,7 @@ function behavesLikeRibbonOptionsVault(params: {
           )
         );
 
-        const currBalance = await assetContract.balanceOf(vault.address);
+        await assetContract.balanceOf(vault.address);
 
         const secondTx = await vault.connect(keeperSigner).rollToNextRound();
 
@@ -2307,7 +2305,7 @@ function behavesLikeRibbonOptionsVault(params: {
           ownerSigner
         );
 
-        const firstTx = await vault.connect(keeperSigner).rollToNextRound();
+        firstTx = await vault.connect(keeperSigner).rollToNextRound();
 
         await vault
           .connect(ownerSigner)
@@ -2391,7 +2389,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await assetContract
           .connect(borrowerSigner)
           .approve(vault.address, totalToReturn2);
-        let firstCloseTx = await vault
+        await vault
           .connect(borrowerSigner)
           ["returnLentFunds(uint256)"](totalToReturn2);
 
@@ -2401,7 +2399,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         const secondInitialBalance = await vault.totalBalance();
 
-        const secondTx = await vault.connect(keeperSigner).rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         let vaultFees = secondInitialLockedBalance
           .add(queuedWithdrawAmount.sub(queuedWithdrawAmountInitial))
@@ -2417,8 +2415,6 @@ function behavesLikeRibbonOptionsVault(params: {
             .mul(await vault.performanceFee())
             .div(BigNumber.from(100).mul(BigNumber.from(10).pow(6)))
         );
-
-        const totalBalanceAfterFee = await vault.totalBalance();
 
         assert.equal(
           secondInitialBalance.sub(await vault.totalBalance()).toString(),
@@ -2495,8 +2491,6 @@ function behavesLikeRibbonOptionsVault(params: {
     });
 
     describe("#maxRedeem", () => {
-      let oracle: Contract;
-
       time.revertToSnapshotAfterEach(async function () {});
 
       it("is able to redeem deposit at new price per share", async function () {
@@ -2613,8 +2607,6 @@ function behavesLikeRibbonOptionsVault(params: {
 
         // Mid-week deposit in round 2
         await vault.connect(userSigner).deposit(params.depositAmount);
-
-        const vaultState = await vault.vaultState();
 
         const beforeBalance = await vault.totalBalance();
 
@@ -2833,8 +2825,6 @@ function behavesLikeRibbonOptionsVault(params: {
     });
 
     describe("#initiateWithdraw", () => {
-      let oracle: Contract;
-
       time.revertToSnapshotAfterEach(async () => {});
 
       it("reverts when user initiates withdraws without any deposit", async function () {
