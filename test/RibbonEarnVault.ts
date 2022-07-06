@@ -2305,7 +2305,7 @@ function behavesLikeRibbonOptionsVault(params: {
           ownerSigner
         );
 
-        firstTx = await vault.connect(keeperSigner).rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         await vault
           .connect(ownerSigner)

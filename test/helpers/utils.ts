@@ -11,10 +11,10 @@ import {
   SAVAX_PRICER,
 } from "../../constants/constants";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
-import { BigNumber, BigNumberish, Contract } from "ethers";
+import { BigNumberish, Contract } from "ethers";
 import { wmul } from "../helpers/math";
 
-const { provider, getDefaultProvider } = ethers;
+const { getDefaultProvider } = ethers;
 const { parseEther } = ethers.utils;
 const chainId = network.config.chainId;
 
