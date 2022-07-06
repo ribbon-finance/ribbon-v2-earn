@@ -13,6 +13,8 @@ library VaultLifecycleEarn {
     using SafeMath for uint256;
     using SupportsNonCompliantERC20 for IERC20;
 
+    uint256 internal constant totalPCT = 10000; // Equals 100%
+
     /**
      * @param decimals is the decimals of the asset
      * @param totalBalance is the vaults total balance of the asset
@@ -226,8 +228,6 @@ library VaultLifecycleEarn {
             _vaultParams.cap > _vaultParams.minimumSupply,
             "cap has to be higher than minimumSupply"
         );
-
-        uint256 totalPCT = 10000; // Equals 100%
 
         require(
             _allocationState.nextLoanTermLength == 0,

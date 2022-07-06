@@ -43,6 +43,12 @@ abstract contract RibbonEarnVaultStorageV1 {
     /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
     address public optionSeller;
 
+    /// @notice pendingOptionSeller is the pending address of the entity that we will be buying options from (EX: Orbit)
+    address public pendingOptionSeller;
+
+    /// @notice lastOptionSellerChange is the last time option seller was set
+    uint256 public lastOptionSellerChange;
+
     /// @notice Performance fee charged on premiums earned in rollToNextRound. Only charged when there is no loss.
     uint256 public performanceFee;
 

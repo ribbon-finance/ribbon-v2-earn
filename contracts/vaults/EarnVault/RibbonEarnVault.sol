@@ -302,7 +302,8 @@ contract RibbonEarnVault is
         require(newOptionSeller != address(0), "!newOptionSeller");
         require(newOptionSeller != optionSeller, "Must be new option seller");
         emit OptionSellerSet(optionSeller, newOptionSeller);
-        optionSeller = newOptionSeller;
+        pendingOptionSeller = newOptionSeller;
+        lastOptionSellerChange = block.timestamp;
     }
 
     /**
@@ -312,6 +313,18 @@ contract RibbonEarnVault is
         require(block.timestamp >= (lastBorrowerChange + 3 days), "!timelock");
         borrower = pendingBorrower;
         pendingBorrower = address(0);
+    }
+
+    /**
+     * @notice Commits the option seller
+     */
+    function commitOptionSeller() external onlyOwner {
+        require(
+            block.timestamp >= (lastOptionSellerChange + 3 days),
+            "!timelock"
+        );
+        optionSeller = pendingOptionSeller;
+        pendingOptionSeller = address(0);
     }
 
     /**
@@ -407,13 +420,13 @@ contract RibbonEarnVault is
         external
         onlyOwner
     {
+        require(_optionPurchaseFreq > 0, "!_optionPurchaseFreq");
+
         require(
-            _optionPurchaseFreq > 0 &&
-                ((allocationState.nextLoanTermLength == 0 &&
-                    (_optionPurchaseFreq <=
-                        allocationState.currentLoanTermLength)) ||
-                    _optionPurchaseFreq <= allocationState.nextLoanTermLength),
-            "!_optionPurchaseFreq"
+            (allocationState.nextLoanTermLength == 0 &&
+                _optionPurchaseFreq <= allocationState.currentLoanTermLength) ||
+                _optionPurchaseFreq <= allocationState.nextLoanTermLength,
+            "! _optionPurchaseFreq < loanTermLength"
         );
         allocationState.nextOptionPurchaseFreq = _optionPurchaseFreq;
         emit NewOptionPurchaseFrequency(
@@ -839,7 +852,7 @@ contract RibbonEarnVault is
                 uint256(vaultState.lastOptionPurchaseTime).add(
                     allocationState.currentOptionPurchaseFreq
                 ),
-            "!delayedpurchase"
+            "Purchase does not fulfill frequency"
         );
 
         uint8 optionPurchasesPerLoanTerm =
@@ -852,7 +865,7 @@ contract RibbonEarnVault is
         uint256 optionAllocation =
             allocationState.optionAllocation.div(optionPurchasesPerLoanTerm);
 
-        vaultState.optionsBoughtInRound += uint104(optionAllocation);
+        vaultState.optionsBoughtInRound += uint128(optionAllocation);
         vaultState.lastOptionPurchaseTime = uint64(block.timestamp);
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
@@ -1101,7 +1114,7 @@ contract RibbonEarnVault is
         uint256 yield =
             amount > loanAllocation ? amount.sub(loanAllocation) : 0;
 
-        vaultState.amtFundsReturned += uint104(amount);
+        vaultState.amtFundsReturned += amount;
 
         emit CloseLoan(
             amount,

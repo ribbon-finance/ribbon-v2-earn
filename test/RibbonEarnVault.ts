@@ -54,8 +54,8 @@ describe("RibbonEarnVault", () => {
     performanceFee: BigNumber.from("20000000"),
     minimumSupply: BigNumber.from("10").pow("3").toString(),
     gasLimits: {
-      depositWorstCase: 116273,
-      depositBestCase: 99911,
+      depositWorstCase: 116295,
+      depositBestCase: 99933,
     },
     mintConfig: {
       amount: parseUnits("10000000", 6),
@@ -844,10 +844,11 @@ function behavesLikeRibbonOptionsVault(params: {
     describe("#setOptionSeller", () => {
       time.revertToSnapshotAfterTest();
 
-      it("set option seller", async function () {
+      it("set pending option seller", async function () {
         assert.equal(await vault.optionSeller(), optionSeller);
         let tx = await vault.connect(ownerSigner).setOptionSeller(owner);
-        assert.equal(await vault.optionSeller(), owner);
+        assert.equal(await vault.optionSeller(), optionSeller);
+        assert.equal(await vault.pendingOptionSeller(), owner);
 
         await expect(tx)
           .to.emit(vault, "OptionSellerSet")
@@ -856,6 +857,37 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("reverts when not owner call", async function () {
         await expect(vault.setOptionSeller(owner)).to.be.revertedWith(
+          "caller is not the owner"
+        );
+      });
+    });
+
+    describe("#commitOptionSeller", () => {
+      time.revertToSnapshotAfterTest();
+      time.revertToSnapshotAfterEach();
+
+      it("set new option seller", async function () {
+        await vault.connect(ownerSigner).setOptionSeller(owner);
+        assert.equal(await vault.optionSeller(), optionSeller);
+        assert.equal(await vault.pendingOptionSeller(), owner);
+        // 72 hours
+        await time.increase(86400 * 3 + 1);
+        await vault.connect(ownerSigner).commitOptionSeller();
+        assert.equal(await vault.optionSeller(), owner);
+        assert.equal(await vault.pendingOptionSeller(), constants.AddressZero);
+      });
+
+      it("reverts when not waiting 72 hours for commit borrower", async function () {
+        assert.equal(await vault.optionSeller(), optionSeller);
+        await vault.connect(ownerSigner).setOptionSeller(owner);
+
+        await expect(
+          vault.connect(ownerSigner).commitOptionSeller()
+        ).to.be.revertedWith("!timelock");
+      });
+
+      it("reverts when not owner call", async function () {
+        await expect(vault.setBorrower(owner)).to.be.revertedWith(
           "caller is not the owner"
         );
       });
@@ -1701,7 +1733,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await vault.connect(keeperSigner).buyOption();
         await expect(
           vault.connect(keeperSigner).buyOption()
-        ).to.be.revertedWith("!delayedpurchase");
+        ).to.be.revertedWith("Purchase does not fulfill frequency");
       });
 
       it("it transfers correct amount to option seller", async function () {
@@ -1775,6 +1807,9 @@ function behavesLikeRibbonOptionsVault(params: {
         await vault
           .connect(ownerSigner)
           .setOptionSeller(optionSellerWallet.address);
+
+        await time.increase(86400 * 3 + 1);
+        await vault.connect(ownerSigner).commitOptionSeller();
 
         const result = await signERC2612Permit(
           optionSellerWallet,
@@ -1864,10 +1899,21 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("sign and pay principal + interest", async function () {
+        let borrowerWallet: Wallet = await generateWallet(
+          assetContract,
+          depositAmount,
+          userSigner
+        );
+
+        await vault.connect(ownerSigner).setBorrower(borrowerWallet.address);
+
+        await time.increase(86400 * 3 + 1);
+        await vault.connect(ownerSigner).commitBorrower();
+
         const result = await signERC2612Permit(
-          optionSellerSigner,
+          borrowerWallet,
           assetContract.address,
-          borrower,
+          borrowerWallet.address,
           vault.address,
           depositAmount.toString()
         );
@@ -1875,7 +1921,7 @@ function behavesLikeRibbonOptionsVault(params: {
         let balBefore = await assetContract.balanceOf(vault.address);
 
         await vault
-          .connect(borrowerSigner)
+          .connect(borrowerWallet)
           ["returnLentFunds(uint256,uint256,uint8,bytes32,bytes32)"](
             depositAmount,
             result.deadline,
