@@ -4,7 +4,6 @@ import { BigNumber, BigNumberish, constants, Contract, Wallet } from "ethers";
 import { parseUnits } from "ethers/lib/utils";
 import moment from "moment-timezone";
 import * as time from "./helpers/time";
-import { signERC2612Permit } from "eth-permit";
 import {
   CHAINID,
   WETH_ADDRESS,
@@ -18,6 +17,7 @@ import {
   mintToken,
   lockedBalanceForRollover,
   generateWallet,
+  getPermitSignature,
 } from "./helpers/utils";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { assert } from "./helpers/assertions";
@@ -246,7 +246,7 @@ function behavesLikeRibbonOptionsVault(params: {
           {
             forking: {
               jsonRpcUrl: TEST_URI[chainId],
-              blockNumber: 15055382,
+              blockNumber: 15086230,
             },
           },
         ],
@@ -1275,23 +1275,16 @@ function behavesLikeRibbonOptionsVault(params: {
             userSigner
           );
 
-          const result = await signERC2612Permit(
+          const { v, r, s } = await getPermitSignature(
             rdmWallet,
-            assetContract.address,
-            rdmWallet.address,
+            assetContract,
             vault.address,
-            depositAmount.toString()
+            depositAmount
           );
 
           const res = await vault
-            .connect(rdmWallet)
-            .depositWithPermit(
-              depositAmount,
-              result.deadline,
-              result.v,
-              result.r,
-              result.s
-            );
+            .connect(await ethers.provider.getSigner(rdmWallet.address))
+            .depositWithPermit(depositAmount, constants.MaxUint256, v, r, s);
 
           assert.bnEqual(
             await assetContract.balanceOf(user),
@@ -1301,10 +1294,12 @@ function behavesLikeRibbonOptionsVault(params: {
           assert.isTrue((await vault.balanceOf(user)).isZero());
           await expect(res)
             .to.emit(vault, "Deposit")
-            .withArgs(user, depositAmount, 1);
+            .withArgs(rdmWallet.address, depositAmount, 1);
 
           assert.bnEqual(await vault.totalPending(), depositAmount);
-          const { round, amount } = await vault.depositReceipts(user);
+          const { round, amount } = await vault.depositReceipts(
+            rdmWallet.address
+          );
           assert.equal(round, 1);
           assert.bnEqual(amount, depositAmount);
         });
@@ -1314,49 +1309,23 @@ function behavesLikeRibbonOptionsVault(params: {
 
           let rdmWallet: Wallet = await generateWallet(
             assetContract,
-            depositAmount.mul(2),
+            depositAmount,
             userSigner
           );
 
-          const result = await signERC2612Permit(
+          const { v, r, s } = await getPermitSignature(
             rdmWallet,
-            assetContract.address,
-            rdmWallet.address,
+            assetContract,
             vault.address,
-            depositAmount.mul(2).toString()
+            depositAmount
           );
 
           const tx1 = await vault
-            .connect(rdmWallet)
-            .depositWithPermit(
-              depositAmount,
-              result.deadline,
-              result.v,
-              result.r,
-              result.s
-            );
+            .connect(await ethers.provider.getSigner(rdmWallet.address))
+            .depositWithPermit(depositAmount, constants.MaxUint256, v, r, s);
 
           const receipt1 = await tx1.wait();
-          assert.isAtMost(
-            receipt1.gasUsed.toNumber(),
-            params.gasLimits.depositWorstCase
-          );
-
-          const tx2 = await vault
-            .connect(rdmWallet)
-            .depositWithPermit(
-              depositAmount,
-              result.deadline,
-              result.v,
-              result.r,
-              result.s
-            );
-
-          const receipt2 = await tx2.wait();
-          assert.isAtMost(
-            receipt2.gasUsed.toNumber(),
-            params.gasLimits.depositBestCase
-          );
+          assert.isAtMost(receipt1.gasUsed.toNumber(), 143819);
         });
       });
     } else {
@@ -1811,24 +1780,23 @@ function behavesLikeRibbonOptionsVault(params: {
         await time.increase(86400 * 3 + 1);
         await vault.connect(ownerSigner).commitOptionSeller();
 
-        const result = await signERC2612Permit(
-          optionSellerWallet,
-          assetContract.address,
-          optionSellerWallet.address,
-          vault.address,
-          depositAmount.toString()
-        );
-
         let balBefore = await assetContract.balanceOf(vault.address);
 
-        await vault
-          .connect(optionSellerWallet)
+        const { v, r, s } = await getPermitSignature(
+          optionSellerWallet,
+          assetContract,
+          vault.address,
+          depositAmount
+        );
+
+        const res = await vault
+          .connect(await ethers.provider.getSigner(optionSellerWallet.address))
           ["payOptionYield(uint256,uint256,uint8,bytes32,bytes32)"](
-            10,
-            result.deadline,
-            result.v,
-            result.r,
-            result.s
+            depositAmount,
+            constants.MaxUint256,
+            v,
+            r,
+            s
           );
 
         let balAfter = await assetContract.balanceOf(vault.address);
@@ -1910,24 +1878,23 @@ function behavesLikeRibbonOptionsVault(params: {
         await time.increase(86400 * 3 + 1);
         await vault.connect(ownerSigner).commitBorrower();
 
-        const result = await signERC2612Permit(
-          borrowerWallet,
-          assetContract.address,
-          borrowerWallet.address,
-          vault.address,
-          depositAmount.toString()
-        );
-
         let balBefore = await assetContract.balanceOf(vault.address);
 
-        await vault
-          .connect(borrowerWallet)
+        const { v, r, s } = await getPermitSignature(
+          borrowerWallet,
+          assetContract,
+          vault.address,
+          depositAmount
+        );
+
+        const res = await vault
+          .connect(await ethers.provider.getSigner(borrowerWallet.address))
           ["returnLentFunds(uint256,uint256,uint8,bytes32,bytes32)"](
             depositAmount,
-            result.deadline,
-            result.v,
-            result.r,
-            result.s
+            constants.MaxUint256,
+            v,
+            r,
+            s
           );
 
         let balAfter = await assetContract.balanceOf(vault.address);
