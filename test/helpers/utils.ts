@@ -1,5 +1,4 @@
 import { ethers, network, artifacts } from "hardhat";
-import { increaseTo } from "./time";
 import WBTC_ABI from "../../constants/abis/WBTC.json";
 import {
   CHAINID,
@@ -11,10 +10,9 @@ import {
   SAVAX_PRICER,
 } from "../../constants/constants";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
-import { BigNumberish, Contract } from "ethers";
-import { wmul } from "../helpers/math";
+import { BigNumber, BigNumberish, Contract } from "ethers";
 
-const { getDefaultProvider } = ethers;
+const { provider } = ethers;
 const { parseEther } = ethers.utils;
 const chainId = network.config.chainId;
 
@@ -66,8 +64,7 @@ export async function parseLog(
 export async function generateWallet(
   asset: Contract,
   amount: BigNumber,
-  owner: SignerWithAddress,
-  weth: Contract
+  owner: SignerWithAddress
 ) {
   let provider = new ethers.providers.JsonRpcProvider(process.env.TEST_URI);
   let signer = new ethers.Wallet(
