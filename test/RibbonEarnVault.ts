@@ -1237,13 +1237,10 @@ function behavesLikeRibbonOptionsVault(params: {
         it("creates a pending deposit", async function () {
           const startBalance = await assetContract.balanceOf(user);
 
-          let weth = await getContractAt("IWETH", WETH_ADDRESS[chainId]);
-
           let rdmWallet: Wallet = await generateWallet(
             assetContract,
             depositAmount,
-            userSigner,
-            weth
+            userSigner
           );
 
           const result = await signERC2612Permit(
@@ -1283,13 +1280,10 @@ function behavesLikeRibbonOptionsVault(params: {
         it("fits gas budget for deposits [ @skip-on-coverage ]", async function () {
           await vault.connect(ownerSigner).deposit(depositAmount);
 
-          let weth = await getContractAt("IWETH", WETH_ADDRESS[chainId]);
-
           let rdmWallet: Wallet = await generateWallet(
             assetContract,
             depositAmount.mul(2),
-            userSigner,
-            weth
+            userSigner
           );
 
           const result = await signERC2612Permit(
@@ -1772,13 +1766,10 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("sign and pay yield", async function () {
-        let weth = await getContractAt("IWETH", WETH_ADDRESS[chainId]);
-
         let optionSellerWallet: Wallet = await generateWallet(
           assetContract,
           depositAmount,
-          userSigner,
-          weth
+          userSigner
         );
 
         await vault
