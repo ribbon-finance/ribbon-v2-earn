@@ -1279,7 +1279,8 @@ function behavesLikeRibbonOptionsVault(params: {
             rdmWallet,
             assetContract,
             vault.address,
-            depositAmount
+            depositAmount,
+            constants.MaxUint256
           );
 
           const res = await vault
@@ -1317,7 +1318,8 @@ function behavesLikeRibbonOptionsVault(params: {
             rdmWallet,
             assetContract,
             vault.address,
-            depositAmount
+            depositAmount,
+            constants.MaxUint256
           );
 
           const tx1 = await vault
@@ -1786,10 +1788,11 @@ function behavesLikeRibbonOptionsVault(params: {
           optionSellerWallet,
           assetContract,
           vault.address,
-          depositAmount
+          depositAmount,
+          constants.MaxUint256
         );
 
-        const res = await vault
+        await vault
           .connect(await ethers.provider.getSigner(optionSellerWallet.address))
           ["payOptionYield(uint256,uint256,uint8,bytes32,bytes32)"](
             depositAmount,
@@ -1884,10 +1887,11 @@ function behavesLikeRibbonOptionsVault(params: {
           borrowerWallet,
           assetContract,
           vault.address,
-          depositAmount
+          depositAmount,
+          constants.MaxUint256
         );
 
-        const res = await vault
+        await vault
           .connect(await ethers.provider.getSigner(borrowerWallet.address))
           ["returnLentFunds(uint256,uint256,uint8,bytes32,bytes32)"](
             depositAmount,

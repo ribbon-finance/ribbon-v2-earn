@@ -73,8 +73,8 @@ export async function getPermitSignature(
   wallet: Wallet,
   token: Contract,
   spender: string,
-  value: BigNumberish = constants.MaxUint256,
-  deadline = constants.MaxUint256,
+  value: BigNumberish,
+  deadline: BigNumberish,
   permitConfig?: {
     nonce: BigNumberish;
     name: string;
