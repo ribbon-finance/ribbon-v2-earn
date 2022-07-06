@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.4;
 
-import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Detailed} from "../../interfaces/IERC20Detailed.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/draft-IERC20Permit.sol";
@@ -41,7 +40,6 @@ contract RibbonEarnVault is
     RibbonEarnVaultStorage
 {
     using SafeERC20 for IERC20;
-    using SafeMath for uint256;
     using ShareMath for Vault.DepositReceipt;
 
     // *IMPORTANT* NO NEW STORAGE VARIABLES SHOULD BE ADDED HERE
@@ -220,10 +218,9 @@ contract RibbonEarnVault is
         borrower = _initParams._borrower;
         optionSeller = _initParams._optionSeller;
         performanceFee = _initParams._performanceFee;
-        managementFee = _initParams
-            ._managementFee
-            .mul(Vault.FEE_MULTIPLIER)
-            .div(WEEKS_PER_YEAR);
+        managementFee =
+            (_initParams._managementFee * Vault.FEE_MULTIPLIER) /
+            WEEKS_PER_YEAR;
         vaultParams = _vaultParams;
         allocationState = _allocationState;
 
@@ -339,7 +336,7 @@ contract RibbonEarnVault is
 
         // We are dividing annualized management fee by num weeks in a year
         uint256 tmpManagementFee =
-            newManagementFee.mul(Vault.FEE_MULTIPLIER).div(WEEKS_PER_YEAR);
+            (newManagementFee * Vault.FEE_MULTIPLIER) / WEEKS_PER_YEAR;
 
         emit ManagementFeeSet(managementFee, newManagementFee);
 
@@ -383,7 +380,7 @@ contract RibbonEarnVault is
     {
         require(_loanAllocationPCT <= TOTAL_PCT, "!_loanAllocationPCT");
         uint16 nextOptionAllocationPCT =
-            uint16(uint256(TOTAL_PCT).sub(_loanAllocationPCT));
+            uint16(uint256(TOTAL_PCT) - _loanAllocationPCT);
 
         emit NewLoanOptionAllocationSet(
             uint256(allocationState.loanAllocationPCT),
@@ -555,7 +552,7 @@ contract RibbonEarnVault is
      */
     function _depositFor(uint256 amount, address creditor) private {
         uint256 currentRound = vaultState.round;
-        uint256 totalWithDepositedAmount = totalBalance().add(amount);
+        uint256 totalWithDepositedAmount = totalBalance() + amount;
 
         require(totalWithDepositedAmount <= vaultParams.cap, "Exceed cap");
         require(
@@ -579,7 +576,7 @@ contract RibbonEarnVault is
 
         // If we have a pending deposit in the current round, we add on to the pending deposit
         if (currentRound == depositReceipt.round) {
-            uint256 newAmount = uint256(depositReceipt.amount).add(amount);
+            uint256 newAmount = uint256(depositReceipt.amount) + amount;
             depositAmount = newAmount;
         }
 
@@ -591,7 +588,7 @@ contract RibbonEarnVault is
             unredeemedShares: uint128(unredeemedShares)
         });
 
-        uint256 newTotalPending = uint256(vaultState.totalPending).add(amount);
+        uint256 newTotalPending = uint256(vaultState.totalPending) + amount;
         ShareMath.assertUint128(newTotalPending);
 
         vaultState.totalPending = uint128(newTotalPending);
@@ -625,7 +622,7 @@ contract RibbonEarnVault is
 
         uint256 withdrawalShares;
         if (withdrawalIsSameRound) {
-            withdrawalShares = existingShares.add(numShares);
+            withdrawalShares = existingShares + numShares;
         } else {
             require(existingShares == 0, "Existing withdraw");
             withdrawalShares = numShares;
@@ -656,7 +653,7 @@ contract RibbonEarnVault is
         // We leave the round number as non-zero to save on gas for subsequent writes
         withdrawals[msg.sender].shares = 0;
         vaultState.queuedWithdrawShares = uint128(
-            uint256(vaultState.queuedWithdrawShares).sub(withdrawalShares)
+            uint256(vaultState.queuedWithdrawShares) - withdrawalShares
         );
 
         uint256 withdrawAmount =
@@ -727,7 +724,7 @@ contract RibbonEarnVault is
 
         ShareMath.assertUint128(numShares);
         depositReceipts[msg.sender].unredeemedShares = uint128(
-            unredeemedShares.sub(numShares)
+            unredeemedShares - numShares
         );
 
         emit Redeem(msg.sender, numShares, depositReceipt.round);
@@ -751,9 +748,9 @@ contract RibbonEarnVault is
         require(receiptAmount >= amount, "Exceed amount");
 
         // Subtraction underflow checks already ensure it is smaller than uint104
-        depositReceipt.amount = uint104(receiptAmount.sub(amount));
+        depositReceipt.amount = uint104(receiptAmount - amount);
         vaultState.totalPending = uint128(
-            uint256(vaultState.totalPending).sub(amount)
+            uint256(vaultState.totalPending) - amount
         );
 
         emit InstantWithdraw(msg.sender, amount, currentRound);
@@ -767,9 +764,7 @@ contract RibbonEarnVault is
      */
     function initiateWithdraw(uint256 numShares) external nonReentrant {
         _initiateWithdraw(numShares);
-        currentQueuedWithdrawShares = currentQueuedWithdrawShares.add(
-            numShares
-        );
+        currentQueuedWithdrawShares = currentQueuedWithdrawShares + numShares;
     }
 
     /**
@@ -778,7 +773,7 @@ contract RibbonEarnVault is
     function completeWithdraw() external nonReentrant {
         uint256 withdrawAmount = _completeWithdraw();
         lastQueuedWithdrawAmount = uint128(
-            uint256(lastQueuedWithdrawAmount).sub(withdrawAmount)
+            uint256(lastQueuedWithdrawAmount) - withdrawAmount
         );
     }
 
@@ -796,7 +791,7 @@ contract RibbonEarnVault is
         require(numShares > 0);
         uint256 heldByAccount = balanceOf(msg.sender);
         if (heldByAccount < numShares) {
-            _redeem(numShares.sub(heldByAccount), false);
+            _redeem(numShares - heldByAccount, false);
         }
         _transfer(msg.sender, address(this), numShares);
         _approve(address(this), _liquidityGauge, numShares);
@@ -820,9 +815,8 @@ contract RibbonEarnVault is
         lastQueuedWithdrawAmount = queuedWithdrawAmount;
 
         uint256 newQueuedWithdrawShares =
-            uint256(vaultState.queuedWithdrawShares).add(
-                currQueuedWithdrawShares
-            );
+            uint256(vaultState.queuedWithdrawShares) + currQueuedWithdrawShares;
+
         ShareMath.assertUint128(newQueuedWithdrawShares);
         vaultState.queuedWithdrawShares = uint128(newQueuedWithdrawShares);
 
@@ -849,21 +843,19 @@ contract RibbonEarnVault is
         require(
             vaultState.optionsBoughtInRound == 0 ||
                 block.timestamp >=
-                uint256(vaultState.lastOptionPurchaseTime).add(
-                    allocationState.currentOptionPurchaseFreq
-                ),
+                uint256(vaultState.lastOptionPurchaseTime) +
+                    allocationState.currentOptionPurchaseFreq,
             "Purchase does not fulfill frequency"
         );
 
         uint8 optionPurchasesPerLoanTerm =
             SafeCast.toUint8(
-                uint256(allocationState.currentLoanTermLength).div(
+                uint256(allocationState.currentLoanTermLength) /
                     allocationState.currentOptionPurchaseFreq
-                )
             );
 
         uint256 optionAllocation =
-            allocationState.optionAllocation.div(optionPurchasesPerLoanTerm);
+            allocationState.optionAllocation / optionPurchasesPerLoanTerm;
 
         vaultState.optionsBoughtInRound += uint128(optionAllocation);
         vaultState.lastOptionPurchaseTime = uint64(block.timestamp);
@@ -1019,9 +1011,8 @@ contract RibbonEarnVault is
     ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {
         require(
             block.timestamp >=
-                uint256(vaultState.lastEpochTime).add(
-                    allocationState.currentLoanTermLength
-                ),
+                uint256(vaultState.lastEpochTime) +
+                    allocationState.currentLoanTermLength,
             "!ready"
         );
 
@@ -1093,10 +1084,10 @@ contract RibbonEarnVault is
         uint256 optionAllocation = allocationState.optionAllocation;
 
         uint256 yieldInUSD =
-            amount > optionAllocation ? amount.sub(optionAllocation) : 0;
+            amount > optionAllocation ? amount - optionAllocation : 0;
         uint256 yieldInPCT =
             amount > optionAllocation
-                ? amount.mul(Vault.YIELD_MULTIPLIER).div(optionAllocation)
+                ? (amount * Vault.YIELD_MULTIPLIER) / optionAllocation
                 : 0;
 
         emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
@@ -1111,17 +1102,14 @@ contract RibbonEarnVault is
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
-        uint256 yield =
-            amount > loanAllocation ? amount.sub(loanAllocation) : 0;
+        uint256 yield = amount > loanAllocation ? amount - loanAllocation : 0;
 
         vaultState.amtFundsReturned += amount;
 
         emit CloseLoan(
             amount,
             yield,
-            loanAllocation > 0
-                ? (yield * 12).mul(10**2).div(loanAllocation)
-                : 0,
+            loanAllocation > 0 ? ((yield * 12) * 10**2) / loanAllocation : 0,
             msg.sender
         );
     }
@@ -1150,17 +1138,14 @@ contract RibbonEarnVault is
         }
 
         // Set next loan allocation from vault in USD
-        allocationState.loanAllocation = uint256(
-            _allocationState
-                .loanAllocationPCT
-        )
-            .mul(lockedBalance)
-            .div(TOTAL_PCT);
+        allocationState.loanAllocation =
+            (uint256(_allocationState.loanAllocationPCT) * lockedBalance) /
+            TOTAL_PCT;
 
         // Set next option allocation from vault per purchase in USD
-        allocationState.optionAllocation = lockedBalance.sub(
-            allocationState.loanAllocation
-        );
+        allocationState.optionAllocation =
+            lockedBalance -
+            allocationState.loanAllocation;
     }
 
     /************************************************
@@ -1196,7 +1181,7 @@ contract RibbonEarnVault is
      */
     function shares(address account) public view returns (uint256) {
         (uint256 heldByAccount, uint256 heldByVault) = shareBalances(account);
-        return heldByAccount.add(heldByVault);
+        return heldByAccount + heldByVault;
     }
 
     /**
@@ -1254,10 +1239,10 @@ contract RibbonEarnVault is
         // We subtract the funds allocated towards option purchases as these are "lost funds"
         // We subtract the amount of principal returned to avoid double counting in locked amount / USDC balance
         return
-            uint256(vaultState.lockedAmount)
-                .add(IERC20(vaultParams.asset).balanceOf(address(this)))
-                .sub(lockedForOptionPurchases)
-                .sub(amtPrincipalReturned);
+            uint256(vaultState.lockedAmount) +
+            IERC20(vaultParams.asset).balanceOf(address(this)) -
+            lockedForOptionPurchases -
+            amtPrincipalReturned;
     }
 
     /**

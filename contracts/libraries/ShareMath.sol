@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.4;
 
-import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {Vault} from "./Vault.sol";
 
 library ShareMath {
-    using SafeMath for uint256;
-
     uint256 internal constant PLACEHOLDER_UINT = 1;
 
     function assetToShares(
@@ -19,7 +16,7 @@ library ShareMath {
         // Has to be larger than 1 because `1` is used in `initRoundPricePerShares` to prevent cold writes.
         require(assetPerShare > PLACEHOLDER_UINT, "Invalid assetPerShare");
 
-        return assetAmount.mul(10**decimals).div(assetPerShare);
+        return (assetAmount * (10**decimals)) / assetPerShare;
     }
 
     function sharesToAsset(
@@ -32,7 +29,7 @@ library ShareMath {
         // Has to be larger than 1 because `1` is used in `initRoundPricePerShares` to prevent cold writes.
         require(assetPerShare > PLACEHOLDER_UINT, "Invalid assetPerShare");
 
-        return shares.mul(assetPerShare).div(10**decimals);
+        return (shares * assetPerShare) / (10**decimals);
     }
 
     /**
@@ -53,8 +50,7 @@ library ShareMath {
             uint256 sharesFromRound =
                 assetToShares(depositReceipt.amount, assetPerShare, decimals);
 
-            return
-                uint256(depositReceipt.unredeemedShares).add(sharesFromRound);
+            return uint256(depositReceipt.unredeemedShares) + sharesFromRound;
         }
         return depositReceipt.unredeemedShares;
     }
@@ -68,9 +64,7 @@ library ShareMath {
         uint256 singleShare = 10**decimals;
         return
             totalSupply > 0
-                ? singleShare.mul(totalBalance.sub(pendingAmount)).div(
-                    totalSupply
-                )
+                ? (singleShare * (totalBalance - pendingAmount)) / totalSupply
                 : singleShare;
     }
 
