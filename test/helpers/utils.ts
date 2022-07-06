@@ -10,14 +10,7 @@ import {
   SAVAX_PRICER,
 } from "../../constants/constants";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
-import {
-  BigNumber,
-  BigNumberish,
-  Contract,
-  constants,
-  Signature,
-  Wallet,
-} from "ethers";
+import { BigNumber, BigNumberish, Contract, Signature, Wallet } from "ethers";
 import { splitSignature } from "ethers/lib/utils";
 
 const { provider } = ethers;
