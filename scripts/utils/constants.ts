@@ -1,3 +1,5 @@
+const { BigNumber } = ethers;
+
 export const LOAN_TERM_LENGTH = BigNumber.from("28").mul(86400);
 export const OPTION_PURCHASE_FREQ = BigNumber.from("7").mul(86400);
 export const LOAN_ALLOCATION_PCT = BigNumber.from("9900");

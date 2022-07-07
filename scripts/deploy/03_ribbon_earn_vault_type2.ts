@@ -1,10 +1,9 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { CHAINID, WETH_ADDRESS } from "../../constants/constants";
+import { CHAINID, USDC_ADDRESS } from "../../constants/constants";
 import {
   MANAGEMENT_FEE,
   PERFORMANCE_FEE,
-  LOAN_TERM_LENGTH,
   BORROWER,
   OPTION_SELLER,
   LOAN_TERM_LENGTH,
@@ -34,7 +33,6 @@ const main = async ({
   getNamedAccounts,
 }: HardhatRuntimeEnvironment) => {
   const { BigNumber } = ethers;
-  const { parseEther } = ethers.utils;
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
@@ -54,8 +52,8 @@ const main = async ({
     {
       _owner: owner,
       _keeper: keeper,
-      _borrower: BORROWER["WINTERMUTE"],
-      _optionSeller: OPTION_SELLER["ORBIT"],
+      _borrower: BORROWER.WINTERMUTE,
+      _optionSeller: OPTION_SELLER.ORBIT,
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
       _performanceFee: PERFORMANCE_FEE,
