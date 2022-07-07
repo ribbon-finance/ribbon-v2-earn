@@ -41,7 +41,7 @@ library Vault {
         uint16 optionAllocationPCT;
         // Loan Allocation in USD
         uint256 loanAllocation;
-        // Option Purchase Allocation per Purchase in USD
+        // Option Purchase Allocation across all purchases
         uint256 optionAllocation;
     }
 
@@ -64,6 +64,10 @@ library Vault {
         uint64 lastEpochTime;
         // Last Option Purchase Date
         uint64 lastOptionPurchaseTime;
+        // Amount of options bought in current round
+        uint128 optionsBoughtInRound;
+        // Amount of funds returned this round
+        uint256 amtFundsReturned;
     }
 
     struct DepositReceipt {

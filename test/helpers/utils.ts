@@ -1,44 +1,23 @@
 import { ethers, network, artifacts } from "hardhat";
-import { increaseTo } from "./time";
 import WBTC_ABI from "../../constants/abis/WBTC.json";
-import ORACLE_ABI from "../../constants/abis/OpynOracle.json";
-import CHAINLINK_PRICER_ABI from "../../constants/abis/ChainLinkPricer.json";
-import SAVAX_PRICER_ABI from "../../constants/abis/SAvaxPricer.json";
 import {
   CHAINID,
-  OPTION_PROTOCOL,
-  GAMMA_ORACLE,
-  GAMMA_WHITELIST,
-  GAMMA_WHITELIST_OWNER,
-  ORACLE_DISPUTE_PERIOD,
-  ORACLE_LOCKING_PERIOD,
-  ORACLE_OWNER,
   USDC_ADDRESS,
   APE_ADDRESS,
   RETH_ADDRESS,
   WBTC_ADDRESS,
   SAVAX_ADDRESS,
-  YEARN_PRICER_OWNER,
   SAVAX_PRICER,
-  GAMMA_CONTROLLER,
-  OTOKEN_FACTORY,
-  MARGIN_POOL,
-  TD_CONTROLLER,
-  TD_OTOKEN_FACTORY,
-  TD_MARGIN_POOL,
-  TD_ORACLE,
-  TD_ORACLE_OWNER,
-  TD_WHITELIST,
-  TD_WHITELIST_OWNER,
-  CHAINLINK_WETH_PRICER,
 } from "../../constants/constants";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
-import { BigNumber, BigNumberish, Contract } from "ethers";
-import { wmul } from "../helpers/math";
+import { BigNumber, BigNumberish, Contract, Signature, Wallet } from "ethers";
+import { splitSignature } from "ethers/lib/utils";
 
 const { provider } = ethers;
 const { parseEther } = ethers.utils;
 const chainId = network.config.chainId;
+
+require("dotenv").config();
 
 export async function deployProxy(
   logicContractName: string,
@@ -83,6 +62,98 @@ export async function parseLog(
   return event;
 }
 
+export async function getPermitSignature(
+  wallet: Wallet,
+  token: Contract,
+  spender: string,
+  value: BigNumberish,
+  deadline: BigNumberish,
+  permitConfig?: {
+    nonce: BigNumberish;
+    name: string;
+    chainId: number;
+    version: string;
+  }
+): Promise<Signature> {
+  const [nonce, name, version, chainId] = await Promise.all([
+    permitConfig?.nonce ?? "0",
+    permitConfig?.name ?? "USD Coin",
+    permitConfig?.version ?? "2",
+    permitConfig?.chainId ?? "1",
+  ]);
+
+  return splitSignature(
+    await wallet._signTypedData(
+      {
+        name,
+        version,
+        chainId,
+        verifyingContract: token.address,
+      },
+      {
+        Permit: [
+          {
+            name: "owner",
+            type: "address",
+          },
+          {
+            name: "spender",
+            type: "address",
+          },
+          {
+            name: "value",
+            type: "uint256",
+          },
+          {
+            name: "nonce",
+            type: "uint256",
+          },
+          {
+            name: "deadline",
+            type: "uint256",
+          },
+        ],
+      },
+      {
+        owner: wallet.address,
+        spender,
+        value,
+        nonce,
+        deadline,
+      }
+    )
+  );
+}
+
+export async function generateWallet(
+  asset: Contract,
+  amount: BigNumber,
+  owner: SignerWithAddress
+) {
+  let provider = new ethers.providers.JsonRpcProvider(process.env.TEST_URI);
+  let signer = new ethers.Wallet(
+    "0ce495bd7bab5341ae5a7ac195173fba1aa56f6561e35e1fec6176e2519ab8da",
+    provider
+  );
+
+  await network.provider.request({
+    method: "hardhat_impersonateAccount",
+    params: [signer.address],
+  });
+
+  await asset.connect(owner).transfer(signer.address, amount);
+
+  // Create a transaction object
+  let tx = {
+    to: signer.address,
+    // Convert currency unit from ether to wei
+    value: ethers.utils.parseEther("10"),
+  };
+
+  await owner.sendTransaction(tx);
+
+  return signer;
+}
 export async function mintAndApprove(
   tokenAddress: string,
   userSigner: SignerWithAddress,
@@ -129,226 +200,6 @@ export async function getAssetPricer(
   await forceSend.connect(signer).go(pricer, { value: parseEther("0.5") });
 
   return await pricerContract.connect(ownerSigner);
-}
-
-export async function setAssetPricer(
-  asset: string,
-  pricer: string,
-  protocol: OPTION_PROTOCOL
-) {
-  const oracleAddr =
-    protocol === OPTION_PROTOCOL.GAMMA
-      ? GAMMA_ORACLE[chainId]
-      : TD_ORACLE[chainId];
-  const oracleOwnerAddr =
-    protocol === OPTION_PROTOCOL.GAMMA
-      ? ORACLE_OWNER[chainId]
-      : TD_ORACLE_OWNER[chainId];
-
-  await network.provider.request({
-    method: "hardhat_impersonateAccount",
-    params: [oracleOwnerAddr],
-  });
-
-  const ownerSigner = await provider.getSigner(oracleOwnerAddr);
-
-  const oracle = await ethers.getContractAt("IOracle", oracleAddr);
-
-  await oracle.connect(ownerSigner).setAssetPricer(asset, pricer);
-}
-
-export async function whitelistProduct(
-  underlying: string,
-  strike: string,
-  collateral: string,
-  isPut: boolean,
-  protocol: OPTION_PROTOCOL
-) {
-  const [adminSigner] = await ethers.getSigners();
-  const whitelistAddr =
-    protocol === OPTION_PROTOCOL.GAMMA
-      ? GAMMA_WHITELIST[chainId]
-      : TD_WHITELIST[chainId];
-  const whitelistOwnerAddr =
-    protocol === OPTION_PROTOCOL.GAMMA
-      ? GAMMA_WHITELIST_OWNER[chainId]
-      : TD_WHITELIST_OWNER[chainId];
-
-  await network.provider.request({
-    method: "hardhat_impersonateAccount",
-    params: [whitelistOwnerAddr],
-  });
-
-  const ownerSigner = await provider.getSigner(whitelistOwnerAddr);
-
-  const whitelist = await ethers.getContractAt(
-    "IGammaWhitelist",
-    whitelistAddr
-  );
-
-  await adminSigner.sendTransaction({
-    to: whitelistOwnerAddr,
-    value: parseEther("5"),
-  });
-
-  await whitelist.connect(ownerSigner).whitelistCollateral(collateral);
-
-  await whitelist
-    .connect(ownerSigner)
-    .whitelistProduct(underlying, strike, collateral, isPut);
-}
-
-export async function setupOracle(
-  assetAddr: string,
-  chainlinkPricer: string,
-  signer: SignerWithAddress,
-  protocol: OPTION_PROTOCOL,
-  collateralAssetAddr: string = ""
-) {
-  await network.provider.request({
-    method: "hardhat_impersonateAccount",
-    params: [chainlinkPricer],
-  });
-
-  const oracleAddr =
-    protocol === OPTION_PROTOCOL.GAMMA
-      ? GAMMA_ORACLE[chainId]
-      : TD_ORACLE[chainId];
-  const oracleOwnerAddr =
-    protocol === OPTION_PROTOCOL.GAMMA
-      ? ORACLE_OWNER[chainId]
-      : TD_ORACLE_OWNER[chainId];
-
-  await network.provider.request({
-    method: "hardhat_impersonateAccount",
-    params: [oracleOwnerAddr],
-  });
-  const oracleOwnerSigner = await provider.getSigner(oracleOwnerAddr);
-
-  const pricerSigner = await provider.getSigner(chainlinkPricer);
-
-  const forceSendContract = await ethers.getContractFactory("ForceSend");
-  const forceSend = await forceSendContract.deploy(); // force Send is a contract that forces the sending of Ether to WBTC minter (which is a contract with no receive() function)
-  await forceSend
-    .connect(signer)
-    .go(chainlinkPricer, { value: parseEther("10") });
-
-  const oracle = new ethers.Contract(oracleAddr, ORACLE_ABI, pricerSigner);
-
-  await signer.sendTransaction({
-    to: oracleOwnerAddr,
-    value: parseEther("1"),
-  });
-
-  await oracle
-    .connect(oracleOwnerSigner)
-    .setStablePrice(USDC_ADDRESS[chainId], "100000000");
-
-  if (protocol === OPTION_PROTOCOL.GAMMA) {
-    if (collateralAssetAddr === RETH_ADDRESS[chainId]) {
-      await oracle
-        .connect(oracleOwnerSigner)
-        .setAssetPricer(assetAddr, CHAINLINK_WETH_PRICER[chainId]);
-
-      await oracle
-        .connect(oracleOwnerSigner)
-        .setAssetPricer(collateralAssetAddr, chainlinkPricer);
-    } else {
-      await oracle
-        .connect(oracleOwnerSigner)
-        .setAssetPricer(assetAddr, chainlinkPricer);
-    }
-  } else {
-    if (collateralAssetAddr === RETH_ADDRESS[chainId]) {
-      await oracle
-        .connect(oracleOwnerSigner)
-        .updateAssetPricer(assetAddr, CHAINLINK_WETH_PRICER[chainId]);
-
-      await oracle
-        .connect(oracleOwnerSigner)
-        .updateAssetPricer(collateralAssetAddr, chainlinkPricer);
-    } else {
-      await oracle
-        .connect(oracleOwnerSigner)
-        .updateAssetPricer(assetAddr, chainlinkPricer);
-    }
-  }
-
-  return oracle;
-}
-
-export async function setOpynOracleExpiryPrice(
-  asset: string,
-  oracle: Contract,
-  expiry: BigNumber,
-  settlePrice: BigNumber,
-  collateralAsset: string = ""
-) {
-  await increaseTo(expiry.toNumber() + ORACLE_LOCKING_PERIOD + 1);
-
-  let receipt;
-
-  if (collateralAsset === RETH_ADDRESS[chainId]) {
-    const res = await oracle.setExpiryPrice(
-      collateralAsset,
-      expiry,
-      settlePrice
-    );
-    await res.wait();
-
-    const forceSendContract = await ethers.getContractFactory("ForceSend");
-    const forceSend = await forceSendContract.deploy(); // force Send is a contract that forces the sending of Ether to WBTC minter (which is a contract with no receive() function)
-    await forceSend
-      .connect(oracle.signer)
-      .go(CHAINLINK_WETH_PRICER[chainId], { value: parseEther("3") });
-
-    await network.provider.request({
-      method: "hardhat_impersonateAccount",
-      params: [CHAINLINK_WETH_PRICER[chainId]],
-    });
-    const pricerSigner = await provider.getSigner(
-      CHAINLINK_WETH_PRICER[chainId]
-    );
-    let oracle2 = new ethers.Contract(oracle.address, ORACLE_ABI, pricerSigner);
-    const res2 = await oracle2.setExpiryPrice(asset, expiry, settlePrice);
-    receipt = await res2.wait();
-  } else {
-    const res = await oracle.setExpiryPrice(asset, expiry, settlePrice);
-    receipt = await res.wait();
-  }
-  const timestamp = (await provider.getBlock(receipt.blockNumber)).timestamp;
-
-  await increaseTo(timestamp + ORACLE_DISPUTE_PERIOD + 1);
-}
-
-export async function setOpynOracleExpiryPriceYearn(
-  underlyingAsset: string,
-  underlyingOracle: Contract,
-  underlyingSettlePrice: BigNumber,
-  collateralPricer: Contract,
-  expiry: BigNumber
-) {
-  await increaseTo(expiry.toNumber() + ORACLE_LOCKING_PERIOD + 1);
-
-  const res = await underlyingOracle.setExpiryPrice(
-    underlyingAsset,
-    expiry,
-    underlyingSettlePrice
-  );
-  await res.wait();
-  await network.provider.request({
-    method: "hardhat_impersonateAccount",
-    params: [YEARN_PRICER_OWNER],
-  });
-
-  const oracleOwnerSigner = await provider.getSigner(YEARN_PRICER_OWNER);
-  const res2 = await collateralPricer
-    .connect(oracleOwnerSigner)
-    .setExpiryPriceInOracle(expiry);
-  const receipt = await res2.wait();
-
-  const timestamp = (await provider.getBlock(receipt.blockNumber)).timestamp;
-  await increaseTo(timestamp + ORACLE_DISPUTE_PERIOD + 1);
 }
 
 export async function addMinter(
@@ -429,114 +280,6 @@ export const isBridgeToken = (chainId: number, address: string) =>
   chainId === CHAINID.AVAX_MAINNET &&
   (address === WBTC_ADDRESS[chainId] || address === USDC_ADDRESS[chainId]);
 
-export interface Bid {
-  swapId: number;
-  nonce: number;
-  signerWallet: string;
-  sellAmount: BigNumberish;
-  buyAmount: BigNumberish;
-  referrer: string;
-}
-
-export async function generateSignedBid(
-  chainId: number,
-  swapContractAddress: string,
-  contractSigner: string,
-  bid: Bid
-) {
-  const domain = {
-    name: "RIBBON SWAP", // This is set as a constant in the swap contract
-    version: "1", // This is set as a constant in the swap contract
-    chainId,
-    verifyingContract: swapContractAddress,
-  };
-
-  const types = {
-    Bid: [
-      { name: "swapId", type: "uint256" },
-      { name: "nonce", type: "uint256" },
-      { name: "signerWallet", type: "address" },
-      { name: "sellAmount", type: "uint256" },
-      { name: "buyAmount", type: "uint256" },
-      { name: "referrer", type: "address" },
-    ],
-  };
-
-  const userSigner = ethers.provider.getSigner(contractSigner);
-
-  /* eslint no-underscore-dangle: 0 */
-  const signedMsg = await userSigner._signTypedData(domain, types, bid);
-
-  const signature = signedMsg.substring(2);
-
-  return {
-    ...bid,
-    v: parseInt(signature.substring(128, 130), 16),
-    r: "0x" + signature.substring(0, 64),
-    s: "0x" + signature.substring(64, 128),
-  };
-}
-
-export async function bidForOToken(
-  gnosisAuction: Contract,
-  assetContract: Contract,
-  contractSigner: string,
-  oToken: string,
-  premium: BigNumber,
-  assetDecimals: number,
-  multiplier: string,
-  auctionDuration: number
-) {
-  const userSigner = await ethers.provider.getSigner(contractSigner);
-
-  const latestAuction = (await gnosisAuction.auctionCounter()).toString();
-  const totalOptionsAvailableToBuy = BigNumber.from(
-    await (
-      await ethers.getContractAt("IERC20", oToken)
-    ).balanceOf(gnosisAuction.address)
-  )
-    .mul(await gnosisAuction.FEE_DENOMINATOR())
-    .div(
-      (await gnosisAuction.FEE_DENOMINATOR()).add(
-        await gnosisAuction.feeNumerator()
-      )
-    )
-    .div(multiplier);
-
-  let bid = wmul(
-    totalOptionsAvailableToBuy.mul(BigNumber.from(10).pow(10)),
-    premium
-  );
-  bid =
-    assetDecimals > 18
-      ? bid.mul(BigNumber.from(10).pow(assetDecimals - 18))
-      : bid.div(BigNumber.from(10).pow(18 - assetDecimals));
-
-  const queueStartElement =
-    "0x0000000000000000000000000000000000000000000000000000000000000001";
-
-  await assetContract
-    .connect(userSigner)
-    .approve(gnosisAuction.address, bid.toString());
-
-  // BID OTOKENS HERE
-  await gnosisAuction
-    .connect(userSigner)
-    .placeSellOrders(
-      latestAuction,
-      [totalOptionsAvailableToBuy.toString()],
-      [bid.toString()],
-      [queueStartElement],
-      "0x"
-    );
-
-  await increaseTo(
-    (await provider.getBlock("latest")).timestamp + auctionDuration
-  );
-
-  return [latestAuction, totalOptionsAvailableToBuy, bid];
-}
-
 export async function lockedBalanceForRollover(vault: Contract) {
   let currentBalance = await vault.totalBalance();
   let newPricePerShare = await vault.pricePerShare();
@@ -553,42 +296,6 @@ export async function lockedBalanceForRollover(vault: Contract) {
 
   let balanceSansQueued = currentBalance.sub(queuedWithdrawAmount);
   return [balanceSansQueued, queuedWithdrawAmount];
-}
-
-export async function closeAuctionAndClaim(
-  gnosisAuction: Contract,
-  thetaVault: Contract,
-  vault: Contract,
-  signer: string
-) {
-  const userSigner = await ethers.provider.getSigner(signer);
-  await gnosisAuction
-    .connect(userSigner)
-    .settleAuction(await thetaVault.optionAuctionID());
-  await vault.claimAuctionOtokens();
-}
-
-export interface Order {
-  sellAmount: BigNumber;
-  buyAmount: BigNumber;
-  userId: BigNumber;
-}
-
-export function decodeOrder(bytes: string): Order {
-  return {
-    userId: BigNumber.from("0x" + bytes.substring(2, 18)),
-    sellAmount: BigNumber.from("0x" + bytes.substring(43, 66)),
-    buyAmount: BigNumber.from("0x" + bytes.substring(19, 42)),
-  };
-}
-
-export function encodeOrder(order: Order): string {
-  return (
-    "0x" +
-    order.userId.toHexString().slice(2).padStart(16, "0") +
-    order.buyAmount.toHexString().slice(2).padStart(24, "0") +
-    order.sellAmount.toHexString().slice(2).padStart(24, "0")
-  );
 }
 
 async function sharesToAsset(
@@ -636,36 +343,6 @@ export const serializeToObject = (solidityValue: unknown) => {
   return solidityValue;
 };
 
-export const getDeltaStep = (asset: string) => {
-  switch (asset) {
-    case "WBTC":
-      return BigNumber.from("1000");
-    case "AAVE":
-      return BigNumber.from("10");
-    case "SAVAX":
-    case "APE":
-      return BigNumber.from("5");
-    case "SUSHI":
-      return BigNumber.from("1");
-    case "WETH":
-      if (chainId === CHAINID.AVAX_MAINNET) {
-        return BigNumber.from("3");
-      }
-      return BigNumber.from("100");
-    default:
-      throw new Error(`Delta Step not found for asset: ${asset}`);
-  }
-};
-
-export const getPricerABI = (pricer: string) => {
-  switch (pricer) {
-    case SAVAX_PRICER:
-      return SAVAX_PRICER_ABI;
-    default:
-      return CHAINLINK_PRICER_ABI;
-  }
-};
-
 export const getPricerAsset = async (pricer: Contract) => {
   switch (pricer.address) {
     case SAVAX_PRICER:
@@ -673,42 +350,4 @@ export const getPricerAsset = async (pricer: Contract) => {
     default:
       return await pricer.asset();
   }
-};
-
-export const getProtocolAddresses = (
-  protocol: OPTION_PROTOCOL,
-  chainId: number
-) => {
-  switch (protocol) {
-    case OPTION_PROTOCOL.GAMMA:
-      return [
-        GAMMA_CONTROLLER[chainId],
-        OTOKEN_FACTORY[chainId],
-        MARGIN_POOL[chainId],
-        ORACLE_OWNER[chainId],
-      ];
-    case OPTION_PROTOCOL.TD:
-      return [
-        TD_CONTROLLER[chainId],
-        TD_OTOKEN_FACTORY[chainId],
-        TD_MARGIN_POOL[chainId],
-        TD_ORACLE_OWNER[chainId],
-      ];
-    default:
-      throw new Error("Protocol not found");
-  }
-};
-
-export const getAuctionMinPrice = async (
-  gnosisAuction: Contract,
-  tokenDecimals: number
-) => {
-  const auctionDetails = await gnosisAuction.auctionData(
-    await gnosisAuction.auctionCounter()
-  );
-  const initialAuctionOrder = decodeOrder(auctionDetails.initialAuctionOrder);
-  const minPriceE18 = initialAuctionOrder.buyAmount
-    .mul(BigNumber.from(10).pow(36 - tokenDecimals))
-    .div(initialAuctionOrder.sellAmount.mul(BigNumber.from(10).pow(10)));
-  return minPriceE18;
 };
