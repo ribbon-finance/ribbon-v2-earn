@@ -36,9 +36,8 @@
     "underscore": "^1.9.0"
   },
   "scripts": {
-    "test": "yarn test:eth && yarn test:avax && yarn test:oracles && yarn test:utils",
+    "test": "yarn test:eth",
     "test:eth": "CHAINID=1 npx hardhat test test/*.ts test/libraries/*.ts",
-    "test:avax": "CHAINID=43114 npx hardhat test test/RibbonThetaVault.ts",
     "test:sanity": "CHAINID=43114 npx hardhat test test/VaultSanityCheck.ts",
     "test:oracles": "npx hardhat test test/oracles/*.ts",
     "test:upgrade": "npx hardhat test test/upgrades/*.ts",
@@ -89,7 +88,6 @@
     "cron": "^1.8.2",
     "discord.js": "^12.5.3",
     "dotenv": "^10.0.0",
-    "eth-permit": "^0.2.1",
     "got": "^10.7.0",
     "json-stable-stringify": "^1.0.1",
     "moment-timezone": "^0.5.33",
