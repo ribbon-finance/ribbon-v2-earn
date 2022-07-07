@@ -1,3 +1,4 @@
+import { ethers } from "ethers";
 const { BigNumber } = ethers;
 
 export const LOAN_TERM_LENGTH = BigNumber.from("28").mul(86400);
