@@ -187,14 +187,16 @@ contract RibbonEarnVault is
      * @notice Initializes the OptionVault contract with storage variables.
      * @param _initParams is the struct with vault initialization parameters
      * @param _vaultParams is the struct with vault general data
+     * @param _allocationState is the struct with vault loan/option allocation data
      */
     function initialize(
         InitParams calldata _initParams,
         Vault.VaultParams calldata _vaultParams,
         Vault.AllocationState calldata _allocationState
     ) external initializer {
+        require(_initParams._owner != address(0), "!owner");
+
         VaultLifecycleEarn.verifyInitializerParams(
-            _initParams._owner,
             _initParams._keeper,
             _initParams._feeRecipient,
             _initParams._borrower,
@@ -203,7 +205,8 @@ contract RibbonEarnVault is
             _initParams._performanceFee,
             _initParams._tokenName,
             _initParams._tokenSymbol,
-            _vaultParams
+            _vaultParams,
+            _allocationState
         );
 
         __ReentrancyGuard_init();
@@ -299,15 +302,29 @@ contract RibbonEarnVault is
         require(newOptionSeller != address(0), "!newOptionSeller");
         require(newOptionSeller != optionSeller, "Must be new option seller");
         emit OptionSellerSet(optionSeller, newOptionSeller);
-        optionSeller = newOptionSeller;
+        pendingOptionSeller = newOptionSeller;
+        lastOptionSellerChange = block.timestamp;
     }
 
     /**
      * @notice Commits the pending borrower
      */
     function commitBorrower() external onlyOwner {
-        require(block.timestamp >= lastBorrowerChange + 3 days, "!timelock");
+        require(block.timestamp >= (lastBorrowerChange + 3 days), "!timelock");
         borrower = pendingBorrower;
+        pendingBorrower = address(0);
+    }
+
+    /**
+     * @notice Commits the option seller
+     */
+    function commitOptionSeller() external onlyOwner {
+        require(
+            block.timestamp >= (lastOptionSellerChange + 3 days),
+            "!timelock"
+        );
+        optionSeller = pendingOptionSeller;
+        pendingOptionSeller = address(0);
     }
 
     /**
@@ -403,10 +420,13 @@ contract RibbonEarnVault is
         external
         onlyOwner
     {
+        require(_optionPurchaseFreq > 0, "!_optionPurchaseFreq");
+
         require(
-            _optionPurchaseFreq > 0 &&
+            (allocationState.nextLoanTermLength == 0 &&
+                _optionPurchaseFreq <= allocationState.currentLoanTermLength) ||
                 _optionPurchaseFreq <= allocationState.nextLoanTermLength,
-            "!_optionPurchaseFreq"
+            "! _optionPurchaseFreq < loanTermLength"
         );
         allocationState.nextOptionPurchaseFreq = _optionPurchaseFreq;
         emit NewOptionPurchaseFrequency(
@@ -445,6 +465,47 @@ contract RibbonEarnVault is
         _depositFor(msg.value, msg.sender);
 
         IWETH(WETH).deposit{value: msg.value}();
+    }
+
+    /**
+     * @notice Deposits the `asset` from msg.sender without an approve
+     * `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
+     * over the EIP712-formatted function arguments
+     * @param amount is the amount of `asset` to deposit
+     * @param deadline must be a timestamp in the future
+     * @param v is a valid signature
+     * @param r is a valid signature
+     * @param s is a valid signature
+     */
+    function depositWithPermit(
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant {
+        require(vaultParams.asset == USDC, "!USDC");
+        require(amount > 0, "!amount");
+
+        // Sign for transfer approval
+        IERC20Permit(vaultParams.asset).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
+
+        _depositFor(amount, msg.sender);
+
+        // An approve() by the msg.sender is required beforehand
+        IERC20(vaultParams.asset).safeTransferFrom(
+            msg.sender,
+            address(this),
+            amount
+        );
     }
 
     /**
@@ -746,6 +807,8 @@ contract RibbonEarnVault is
      * @notice Rolls the vault's funds into a new short position.
      */
     function rollToNextRound() external onlyKeeper nonReentrant {
+        vaultState.lastLockedAmount = uint104(vaultState.lockedAmount);
+
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
 
         (uint256 lockedBalance, uint256 queuedWithdrawAmount) =
@@ -766,8 +829,10 @@ contract RibbonEarnVault is
         currentQueuedWithdrawShares = 0;
 
         ShareMath.assertUint104(lockedBalance);
-        vaultState.lastLockedAmount = vaultState.lockedAmount;
+
         vaultState.lockedAmount = uint104(lockedBalance);
+        vaultState.optionsBoughtInRound = 0;
+        vaultState.amtFundsReturned = 0;
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
@@ -782,14 +847,26 @@ contract RibbonEarnVault is
      */
     function buyOption() external onlyKeeper {
         require(
-            block.timestamp >=
+            vaultState.optionsBoughtInRound == 0 ||
+                block.timestamp >=
                 uint256(vaultState.lastOptionPurchaseTime).add(
                     allocationState.currentOptionPurchaseFreq
                 ),
-            "!earlypurchase"
+            "Purchase does not fulfill frequency"
         );
 
-        uint256 optionAllocation = allocationState.optionAllocation;
+        uint8 optionPurchasesPerLoanTerm =
+            SafeCast.toUint8(
+                uint256(allocationState.currentLoanTermLength).div(
+                    allocationState.currentOptionPurchaseFreq
+                )
+            );
+
+        uint256 optionAllocation =
+            allocationState.optionAllocation.div(optionPurchasesPerLoanTerm);
+
+        vaultState.optionsBoughtInRound += uint128(optionAllocation);
+        vaultState.lastOptionPurchaseTime = uint64(block.timestamp);
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
 
@@ -929,28 +1006,6 @@ contract RibbonEarnVault is
     }
 
     /**
-     * @notice Helper function that transfers funds from option
-     * seller
-     * @param amount is the amount of yield to pay
-     */
-    function _payOptionYield(uint256 amount) internal {
-        address asset = vaultParams.asset;
-
-        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
-
-        uint256 optionAllocation = allocationState.optionAllocation;
-
-        uint256 yieldInUSD =
-            amount > optionAllocation ? amount.sub(optionAllocation) : 0;
-        uint256 yieldInPCT =
-            amount > optionAllocation
-                ? amount.mul(Vault.YIELD_MULTIPLIER).div(optionAllocation)
-                : 0;
-
-        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
-    }
-
-    /**
      * @notice Helper function that performs most administrative tasks
      * such as minting new shares, getting vault fees, etc.
      * @param lastQueuedWithdrawAmount is old queued withdraw amount
@@ -1025,6 +1080,28 @@ contract RibbonEarnVault is
         return (lockedBalance, queuedWithdrawAmount);
     }
 
+    /**
+     * @notice Helper function that transfers funds from option
+     * seller
+     * @param amount is the amount of yield to pay
+     */
+    function _payOptionYield(uint256 amount) internal {
+        address asset = vaultParams.asset;
+
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+
+        uint256 optionAllocation = allocationState.optionAllocation;
+
+        uint256 yieldInUSD =
+            amount > optionAllocation ? amount.sub(optionAllocation) : 0;
+        uint256 yieldInPCT =
+            amount > optionAllocation
+                ? amount.mul(Vault.YIELD_MULTIPLIER).div(optionAllocation)
+                : 0;
+
+        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
+    }
+
     function _returnLentFunds(uint256 amount) internal {
         IERC20(vaultParams.asset).safeTransferFrom(
             msg.sender,
@@ -1037,10 +1114,14 @@ contract RibbonEarnVault is
         uint256 yield =
             amount > loanAllocation ? amount.sub(loanAllocation) : 0;
 
+        vaultState.amtFundsReturned += amount;
+
         emit CloseLoan(
             amount,
             yield,
-            (yield * 12).mul(10**2).div(loanAllocation),
+            loanAllocation > 0
+                ? (yield * 12).mul(10**2).div(loanAllocation)
+                : 0,
             msg.sender
         );
     }
@@ -1075,16 +1156,11 @@ contract RibbonEarnVault is
         )
             .mul(lockedBalance)
             .div(TOTAL_PCT);
-        uint8 optionPurchasesPerLoanTerm =
-            SafeCast.toUint8(
-                uint256(_allocationState.currentLoanTermLength).div(
-                    _allocationState.nextOptionPurchaseFreq
-                )
-            );
+
         // Set next option allocation from vault per purchase in USD
-        allocationState.optionAllocation = lockedBalance
-            .sub(_allocationState.loanAllocation)
-            .div(optionPurchasesPerLoanTerm);
+        allocationState.optionAllocation = lockedBalance.sub(
+            allocationState.loanAllocation
+        );
     }
 
     /************************************************
@@ -1164,14 +1240,24 @@ contract RibbonEarnVault is
     }
 
     /**
-     * @notice Returns the vault's total balance, including the amounts locked into a short position
+     * @notice Returns the vault's total balance, including the amounts lent out
      * @return total balance of the vault, including the amounts locked in third party protocols
      */
     function totalBalance() public view returns (uint256) {
+        uint256 lockedForOptionPurchases = allocationState.optionAllocation;
+
+        uint256 amtPrincipalReturned =
+            vaultState.amtFundsReturned > allocationState.loanAllocation
+                ? allocationState.loanAllocation
+                : vaultState.amtFundsReturned;
+
+        // We subtract the funds allocated towards option purchases as these are "lost funds"
+        // We subtract the amount of principal returned to avoid double counting in locked amount / USDC balance
         return
-            uint256(vaultState.lockedAmount).add(
-                IERC20(vaultParams.asset).balanceOf(address(this))
-            );
+            uint256(vaultState.lockedAmount)
+                .add(IERC20(vaultParams.asset).balanceOf(address(this)))
+                .sub(lockedForOptionPurchases)
+                .sub(amtPrincipalReturned);
     }
 
     /**
