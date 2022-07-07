@@ -161,9 +161,8 @@ library VaultLifecycleEarn {
         // do not collect performance fee for last week
         if (lockedBalanceSansPending > lastLockedAmount) {
             _performanceFeeInAsset = performanceFeePercent > 0
-                ? lockedBalanceSansPending -
-                    (lastLockedAmount * performanceFeePercent) /
-                    (100 * Vault.FEE_MULTIPLIER)
+                ? ((lockedBalanceSansPending - lastLockedAmount) *
+                    performanceFeePercent) / (100 * Vault.FEE_MULTIPLIER)
                 : 0;
             _managementFeeInAsset = managementFeePercent > 0
                 ? (lockedBalanceSansPending * managementFeePercent) /
