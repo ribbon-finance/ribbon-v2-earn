@@ -134,9 +134,6 @@ function checkWithdrawal(vaultAddress: string) {
           "ILiquidityGauge",
           liquidityGaugeAddress
         );
-
-        const assetAddress = (await vault.vaultParams()).asset;
-        asset = await ethers.getContractAt("IERC20", assetAddress);
       });
 
       it("withdraws the correct amount after upgrade", async () => {
