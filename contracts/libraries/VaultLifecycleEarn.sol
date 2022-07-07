@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.4;
 
-import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Vault} from "./Vault.sol";
 import {ShareMath} from "./ShareMath.sol";
@@ -10,7 +9,6 @@ import {IERC20Detailed} from "../interfaces/IERC20Detailed.sol";
 import {SupportsNonCompliantERC20} from "./SupportsNonCompliantERC20.sol";
 
 library VaultLifecycleEarn {
-    using SafeMath for uint256;
     using SupportsNonCompliantERC20 for IERC20;
 
     uint256 internal constant totalPCT = 10000; // Equals 100%
@@ -68,7 +66,7 @@ library VaultLifecycleEarn {
 
         // Deduct older queued withdraws so we don't charge fees on them
         uint256 balanceForVaultFees =
-            currentBalance.sub(params.lastQueuedWithdrawAmount);
+            currentBalance - params.lastQueuedWithdrawAmount;
 
         {
             (performanceFeeInAsset, , totalVaultFee) = VaultLifecycleEarn
@@ -83,23 +81,23 @@ library VaultLifecycleEarn {
 
         // Take into account the fee
         // so we can calculate the newPricePerShare
-        currentBalance = currentBalance.sub(totalVaultFee);
+        currentBalance = currentBalance - totalVaultFee;
 
         {
             newPricePerShare = ShareMath.pricePerShare(
-                params.currentShareSupply.sub(lastQueuedWithdrawShares),
-                currentBalance.sub(params.lastQueuedWithdrawAmount),
+                params.currentShareSupply - lastQueuedWithdrawShares,
+                currentBalance - params.lastQueuedWithdrawAmount,
                 pendingAmount,
                 params.decimals
             );
 
-            queuedWithdrawAmount = params.lastQueuedWithdrawAmount.add(
+            queuedWithdrawAmount =
+                params.lastQueuedWithdrawAmount +
                 ShareMath.sharesToAsset(
                     params.currentQueuedWithdrawShares,
                     newPricePerShare,
                     params.decimals
-                )
-            );
+                );
 
             // After closing the short, if the options expire in-the-money
             // vault pricePerShare would go down because vault's asset balance decreased.
@@ -112,7 +110,7 @@ library VaultLifecycleEarn {
         }
 
         return (
-            currentBalance.sub(queuedWithdrawAmount), // new locked balance subtracts the queued withdrawals
+            currentBalance - queuedWithdrawAmount, // new locked balance subtracts the queued withdrawals
             queuedWithdrawAmount,
             newPricePerShare,
             mintShares,
@@ -150,9 +148,7 @@ library VaultLifecycleEarn {
         // At the first round, currentBalance=0, pendingAmount>0
         // so we just do not charge anything on the first round
         uint256 lockedBalanceSansPending =
-            currentBalance > pendingAmount
-                ? currentBalance.sub(pendingAmount)
-                : 0;
+            currentBalance > pendingAmount ? currentBalance - pendingAmount : 0;
 
         uint256 _performanceFeeInAsset;
         uint256 _managementFeeInAsset;
@@ -165,18 +161,15 @@ library VaultLifecycleEarn {
         // do not collect performance fee for last week
         if (lockedBalanceSansPending > lastLockedAmount) {
             _performanceFeeInAsset = performanceFeePercent > 0
-                ? lockedBalanceSansPending
-                    .sub(lastLockedAmount)
-                    .mul(performanceFeePercent)
-                    .div(100 * Vault.FEE_MULTIPLIER)
+                ? ((lockedBalanceSansPending - lastLockedAmount) *
+                    performanceFeePercent) / (100 * Vault.FEE_MULTIPLIER)
                 : 0;
             _managementFeeInAsset = managementFeePercent > 0
-                ? lockedBalanceSansPending.mul(managementFeePercent).div(
-                    100 * Vault.FEE_MULTIPLIER
-                )
+                ? (lockedBalanceSansPending * managementFeePercent) /
+                    (100 * Vault.FEE_MULTIPLIER)
                 : 0;
 
-            _vaultFee = _performanceFeeInAsset.add(_managementFeeInAsset);
+            _vaultFee = _performanceFeeInAsset + _managementFeeInAsset;
         }
 
         return (_performanceFeeInAsset, _managementFeeInAsset, _vaultFee);
@@ -248,9 +241,9 @@ library VaultLifecycleEarn {
             "!currentOptionPurchaseFreq"
         );
         require(
-            uint256(_allocationState.loanAllocationPCT).add(
-                _allocationState.optionAllocationPCT
-            ) == totalPCT,
+            uint256(_allocationState.loanAllocationPCT) +
+                _allocationState.optionAllocationPCT ==
+                totalPCT,
             "!totalPCT"
         );
         require(_allocationState.loanAllocation == 0, "!loanAllocation");
