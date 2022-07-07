@@ -1,10 +1,6 @@
 import { ethers, network } from "hardhat";
 import { USDC_ADDRESS, WETH_ADDRESS } from "../../constants/constants";
-import {
-  objectEquals,
-  parseLog,
-  serializeMap,
-} from "../helpers/utils";
+import { objectEquals, parseLog, serializeMap } from "../helpers/utils";
 import deployments from "../../constants/deployments.json";
 import { BigNumberish, Contract } from "ethers";
 import * as time from "../helpers/time";
@@ -110,7 +106,6 @@ function checkWithdrawal(vaultAddress: string) {
       let account2: SignerWithAddress;
       let keeper: SignerWithAddress;
       let liquidityGauge: Contract;
-      let asset: Contract;
 
       beforeEach(async function () {
         await vaultProxy.upgradeTo(newImplementation);
