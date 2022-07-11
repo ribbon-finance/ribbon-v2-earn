@@ -20,10 +20,10 @@ const TOKEN_NAME = {
 };
 
 const TOKEN_SYMBOL = {
-  [CHAINID.ETH_MAINNET]: "rUSDC-EARN",
-  [CHAINID.ETH_KOVAN]: "rUSDC-EARN",
-  [CHAINID.AVAX_MAINNET]: "rUSDC-EARN",
-  [CHAINID.AVAX_FUJI]: "rUSDC-EARN",
+  [CHAINID.ETH_MAINNET]: "rEARN",
+  [CHAINID.ETH_KOVAN]: "rEARN",
+  [CHAINID.AVAX_MAINNET]: "rEARN",
+  [CHAINID.AVAX_FUJI]: "rEARN",
 };
 
 const main = async ({
@@ -44,7 +44,7 @@ const main = async ({
   const logicDeployment = await deployments.get("RibbonEarnVaultLogic");
   const RibbonEarnVault = await ethers.getContractFactory("RibbonEarnVault", {
     libraries: {
-      VaultLifecycle: lifecycle.address,
+      VaultLifecycleEarn: lifecycle.address,
     },
   });
 
@@ -67,10 +67,14 @@ const main = async ({
       cap: BigNumber.from("1000000").mul(BigNumber.from(10).pow(6)),
     },
     {
+      nextLoanTermLength: 0,
+      nextOptionPurchaseFreq: 0,
       currentLoanTermLength: LOAN_TERM_LENGTH,
       currentOptionPurchaseFreq: OPTION_PURCHASE_FREQ,
       loanAllocationPCT: LOAN_ALLOCATION_PCT,
       optionAllocationPCT: OPTION_ALLOCATION_PCT,
+      loanAllocation: 0,
+      optionAllocation: 0,
     },
   ];
 
@@ -96,7 +100,7 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["RibbonEarnVaultUSDC"];
+main.tags = ["RibbonEarnVaultUSDC-T2"];
 main.dependencies = ["RibbonEarnVaultLogic"];
 
 export default main;
