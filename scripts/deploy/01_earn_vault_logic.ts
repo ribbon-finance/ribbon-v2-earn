@@ -24,7 +24,7 @@ const main = async ({
     from: deployer,
     args: [WETH_ADDRESS[chainId], USDC_ADDRESS[chainId]],
     libraries: {
-      VaultLifecycle: lifecycle.address,
+      VaultLifecycleEarn: lifecycle.address,
     },
   });
   console.log(`RibbonEarnVaultLogic @ ${vault.address}`);
