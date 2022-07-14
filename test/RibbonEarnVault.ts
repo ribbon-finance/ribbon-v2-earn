@@ -1835,11 +1835,17 @@ function behavesLikeRibbonOptionsVault(params: {
           ["payOptionYield(uint256)"](depositAmount);
 
         let yieldInUSD = depositAmount.sub(
-          (await vault.allocationState()).optionAllocation
+          (await vault.allocationState()).optionAllocation.div(
+            loanTermLength.div(optionPurchaseFreq)
+          )
         );
         let yieldInPCT = depositAmount
           .mul(YIELD_SCALING)
-          .div((await vault.allocationState()).optionAllocation);
+          .div(
+            (await vault.allocationState()).optionAllocation.div(
+              loanTermLength.div(optionPurchaseFreq)
+            )
+          );
 
         await expect(tx)
           .to.emit(vault, "PayOptionYield")

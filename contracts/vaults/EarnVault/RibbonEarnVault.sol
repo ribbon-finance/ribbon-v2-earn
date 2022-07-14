@@ -1081,7 +1081,14 @@ contract RibbonEarnVault is
 
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
 
-        uint256 optionAllocation = allocationState.optionAllocation;
+        uint8 optionPurchasesPerLoanTerm =
+            SafeCast.toUint8(
+                uint256(allocationState.currentLoanTermLength) /
+                    allocationState.currentOptionPurchaseFreq
+            );
+
+        uint256 optionAllocation =
+            allocationState.optionAllocation / optionPurchasesPerLoanTerm;
 
         uint256 yieldInUSD =
             amount > optionAllocation ? amount - optionAllocation : 0;
