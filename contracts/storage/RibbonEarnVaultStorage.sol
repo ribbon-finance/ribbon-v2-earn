@@ -31,14 +31,17 @@ abstract contract RibbonEarnVaultStorageV1 {
     // no access to critical vault changes
     address public keeper;
 
-    /// @notice borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
-    address public borrower;
+    /// @notice borrowers is the array of borrowing addresses (EX: Wintermute, GSR, Alameda, Genesis)
+    address[] public borrowers;
 
-    /// @notice pendingBorrower is the pending address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
-    address public pendingBorrower;
+    /// @notice borrowerMapping is the mapping from borrower to their borrow weight. EX: {Wintermute -> 0.4, GSR -> 0.2}
+    mapping(address => Vault.BorrowerState) public borrowWeights;
 
-    /// @notice lastBorrowerChange is the last time borrower was set
-    uint256 public lastBorrowerChange;
+    /// @notice totalBorrowerWeight is the total borrowing weight
+    uint256 public totalBorrowerWeight;
+
+    /// @notice lastBorrowerBasketChange is the last time the basket of borrowers was changed (add / remove / set)
+    uint256 public lastBorrowerBasketChange;
 
     /// @notice optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
     address public optionSeller;

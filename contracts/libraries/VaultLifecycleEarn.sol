@@ -178,7 +178,6 @@ library VaultLifecycleEarn {
     /**
      * @notice Verify the constructor params satisfy requirements
      * @param feeRecipient is the address to recieve vault performance and management fees
-     * @param borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
      * @param optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
      * @param performanceFee is the perfomance fee pct.
      * @param tokenName is the name of the token
@@ -189,7 +188,6 @@ library VaultLifecycleEarn {
     function verifyInitializerParams(
         address keeper,
         address feeRecipient,
-        address borrower,
         address optionSeller,
         uint256 performanceFee,
         uint256 managementFee,
@@ -198,55 +196,36 @@ library VaultLifecycleEarn {
         Vault.VaultParams calldata _vaultParams,
         Vault.AllocationState calldata _allocationState
     ) external pure {
-        require(keeper != address(0), "!keeper");
-        require(feeRecipient != address(0), "!feeRecipient");
-        require(borrower != address(0), "!borrower");
-        require(optionSeller != address(0), "!optionSeller");
+        require(keeper != address(0), "R7");
+        require(feeRecipient != address(0), "R8");
+        require(optionSeller != address(0), "R9");
 
-        require(
-            performanceFee < 100 * Vault.FEE_MULTIPLIER,
-            "performanceFee >= 100%"
-        );
-        require(
-            managementFee < 100 * Vault.FEE_MULTIPLIER,
-            "managementFee >= 100%"
-        );
-        require(bytes(tokenName).length > 0, "!tokenName");
-        require(bytes(tokenSymbol).length > 0, "!tokenSymbol");
+        require(performanceFee < 100 * Vault.FEE_MULTIPLIER, "R12");
+        require(managementFee < 100 * Vault.FEE_MULTIPLIER, "R11");
+        require(bytes(tokenName).length > 0, "R41");
+        require(bytes(tokenSymbol).length > 0, "R42");
 
-        require(_vaultParams.asset != address(0), "!asset");
-        require(_vaultParams.minimumSupply > 0, "!minimumSupply");
-        require(_vaultParams.cap > 0, "!cap");
-        require(
-            _vaultParams.cap > _vaultParams.minimumSupply,
-            "cap has to be higher than minimumSupply"
-        );
+        require(_vaultParams.asset != address(0), "R43");
+        require(_vaultParams.minimumSupply > 0, "R44");
+        require(_vaultParams.cap > 0, "R13");
+        require(_vaultParams.cap > _vaultParams.minimumSupply, "R45");
 
-        require(
-            _allocationState.nextLoanTermLength == 0,
-            "!nextLoanTermLength"
-        );
-        require(
-            _allocationState.nextOptionPurchaseFreq == 0,
-            "!nextOptionPurchaseFreq"
-        );
-        require(
-            _allocationState.currentLoanTermLength >= 1 days,
-            "!currentLoanTermLength"
-        );
+        require(_allocationState.nextLoanTermLength == 0, "R46");
+        require(_allocationState.nextOptionPurchaseFreq == 0, "R47");
+        require(_allocationState.currentLoanTermLength >= 1 days, "R48");
         require(
             _allocationState.currentOptionPurchaseFreq > 0 &&
                 _allocationState.currentOptionPurchaseFreq <=
                 _allocationState.currentLoanTermLength,
-            "!currentOptionPurchaseFreq"
+            "R49"
         );
         require(
             uint256(_allocationState.loanAllocationPCT) +
                 _allocationState.optionAllocationPCT ==
                 totalPCT,
-            "!totalPCT"
+            "R50"
         );
-        require(_allocationState.loanAllocation == 0, "!loanAllocation");
-        require(_allocationState.optionAllocation == 0, "!optionAllocation");
+        require(_allocationState.loanAllocation == 0, "R1");
+        require(_allocationState.optionAllocation == 0, "R2");
     }
 }
