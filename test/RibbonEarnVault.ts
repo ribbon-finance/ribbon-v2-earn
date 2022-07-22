@@ -504,7 +504,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
             ]
           )
-        ).to.be.revertedWith("!owner");
+        ).to.be.revertedWith("R3");
       });
 
       it("reverts when initializing with 0 keeper", async function () {
@@ -538,7 +538,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
             ]
           )
-        ).to.be.revertedWith("!keeper");
+        ).to.be.revertedWith("R7");
       });
 
       it("reverts when initializing with 0 feeRecipient", async function () {
@@ -572,7 +572,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
             ]
           )
-        ).to.be.revertedWith("!feeRecipient");
+        ).to.be.revertedWith("R8");
       });
 
       it("reverts when initializing with 0 initCap", async function () {
@@ -601,7 +601,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
             ]
           )
-        ).to.be.revertedWith("!cap");
+        ).to.be.revertedWith("R13");
       });
 
       it("reverts when asset is 0x", async function () {
@@ -635,7 +635,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
             ]
           )
-        ).to.be.revertedWith("!asset");
+        ).to.be.revertedWith("R43");
       });
 
       it("reverts when currentLoanTermLength is less than a day", async function () {
@@ -669,7 +669,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
             ]
           )
-        ).to.be.revertedWith("!currentLoanTermLength");
+        ).to.be.revertedWith("R48");
       });
 
       it("reverts when currentOptionPurchaseFreq is greater than currentLoanTermLength", async function () {
@@ -703,7 +703,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
             ]
           )
-        ).to.be.revertedWith("!currentOptionPurchaseFreq");
+        ).to.be.revertedWith("R49");
       });
 
       it("reverts when total allocation is not equal to 100%", async function () {
@@ -737,7 +737,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
             ]
           )
-        ).to.be.revertedWith("!totalPCT");
+        ).to.be.revertedWith("R50");
       });
     });
 
@@ -831,7 +831,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.connect(ownerSigner).commitBorrower()
-        ).to.be.revertedWith("!timelock");
+        ).to.be.revertedWith("R10");
       });
 
       it("reverts when not owner call", async function () {
@@ -883,7 +883,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.connect(ownerSigner).commitOptionSeller()
-        ).to.be.revertedWith("!timelock");
+        ).to.be.revertedWith("R10");
       });
 
       it("reverts when not owner call", async function () {
@@ -933,7 +933,7 @@ function behavesLikeRibbonOptionsVault(params: {
             .setLoanAllocationPCT(
               BigNumber.from(await vault.TOTAL_PCT()).add(1)
             )
-        ).to.be.revertedWith("!_loanAllocationPCT");
+        ).to.be.revertedWith("R14");
       });
 
       it("reverts when not owner call", async function () {
@@ -970,7 +970,7 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when loanTermLength < 1 day", async function () {
         await expect(
           vault.connect(ownerSigner).setLoanTermLength(86399)
-        ).to.be.revertedWith("!_loanTermLength");
+        ).to.be.revertedWith("R15");
       });
 
       it("reverts when not owner call", async function () {
@@ -1012,7 +1012,7 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when _optionPurchaseFreq = 0", async function () {
         await expect(
           vault.connect(ownerSigner).setOptionPurchaseFrequency(0)
-        ).to.be.revertedWith("!_optionPurchaseFreq");
+        ).to.be.revertedWith("R16");
       });
 
       it("reverts when _optionPurchaseFreq > _currentLoanTermLength", async function () {
@@ -1026,7 +1026,7 @@ function behavesLikeRibbonOptionsVault(params: {
                 ).currentLoanTermLength
               ).add(1)
             )
-        ).to.be.revertedWith("! _optionPurchaseFreq < loanTermLength");
+        ).to.be.revertedWith("R17");
       });
 
       it("reverts when _optionPurchaseFreq > _nextLoanTermLength", async function () {
@@ -1034,7 +1034,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.connect(ownerSigner).setOptionPurchaseFrequency(86401)
-        ).to.be.revertedWith("! _optionPurchaseFreq < loanTermLength");
+        ).to.be.revertedWith("R17");
       });
 
       it("reverts when not owner call", async function () {
@@ -1050,7 +1050,7 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when setting 0x0 as feeRecipient", async function () {
         await expect(
           vault.connect(ownerSigner).setFeeRecipient(constants.AddressZero)
-        ).to.be.revertedWith("!newFeeRecipient");
+        ).to.be.revertedWith("R8");
       });
 
       it("reverts when not owner call", async function () {
@@ -1188,7 +1188,7 @@ function behavesLikeRibbonOptionsVault(params: {
         it("reverts when no value passed", async function () {
           await expect(
             vault.connect(userSigner).depositETH({ value: 0 })
-          ).to.be.revertedWith("!value");
+          ).to.be.revertedWith("R19");
         });
 
         it("does not inflate the share tokens on initialization", async function () {
@@ -1214,7 +1214,7 @@ function behavesLikeRibbonOptionsVault(params: {
             vault.connect(userSigner).depositETH({
               value: BigNumber.from("10").pow("10").sub(BigNumber.from("1")),
             })
-          ).to.be.revertedWith("Insufficient balance");
+          ).to.be.revertedWith("R23");
         });
 
         it("ETH deposit works at predefined schedule", async function () {
@@ -1256,7 +1256,7 @@ function behavesLikeRibbonOptionsVault(params: {
           const depositAmount = parseEther("1");
           await expect(
             vault.depositETH({ value: depositAmount })
-          ).to.be.revertedWith("!WETH");
+          ).to.be.revertedWith("R18");
         });
       });
     }
@@ -1336,7 +1336,7 @@ function behavesLikeRibbonOptionsVault(params: {
           const depositAmount = parseEther("1");
           await expect(
             vault.depositWithPermit(depositAmount)
-          ).to.be.revertedWith("!USDC");
+          ).to.be.revertedWith("R20");
         });
       });
     }
@@ -1451,7 +1451,7 @@ function behavesLikeRibbonOptionsVault(params: {
           vault
             .connect(userSigner)
             .deposit(BigNumber.from(minimumSupply).sub(BigNumber.from("1")))
-        ).to.be.revertedWith("Insufficient balance");
+        ).to.be.revertedWith("R23");
       });
 
       it("updates the previous deposit receipt", async function () {
@@ -1629,7 +1629,7 @@ function behavesLikeRibbonOptionsVault(params: {
               BigNumber.from(minimumSupply).sub(BigNumber.from("1")),
               creditor
             )
-        ).to.be.revertedWith("Insufficient balance");
+        ).to.be.revertedWith("R23");
       });
 
       it("updates the previous deposit receipt", async function () {
@@ -1695,7 +1695,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("reverts when not called with keeper", async function () {
         await expect(vault.connect(ownerSigner).buyOption()).to.be.revertedWith(
-          "!keeper"
+          "R4"
         );
       });
 
@@ -1704,7 +1704,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await vault.connect(keeperSigner).buyOption();
         await expect(
           vault.connect(keeperSigner).buyOption()
-        ).to.be.revertedWith("Purchase does not fulfill frequency");
+        ).to.be.revertedWith("R34");
       });
 
       it("it transfers correct amount to option seller", async function () {
@@ -1765,7 +1765,7 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when not called with option seller", async function () {
         await expect(
           vault.connect(ownerSigner)["payOptionYield(uint256)"](100)
-        ).to.be.revertedWith("!optionSeller");
+        ).to.be.revertedWith("R5");
       });
 
       it("sign and pay yield", async function () {
@@ -1872,7 +1872,7 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when not called with borrower", async function () {
         await expect(
           vault.connect(ownerSigner)["returnLentFunds(uint256)"](100)
-        ).to.be.revertedWith("!borrower");
+        ).to.be.revertedWith("R5");
       });
 
       it("sign and pay principal + interest", async function () {
@@ -2019,7 +2019,7 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when not called with keeper", async function () {
         await expect(
           vault.connect(ownerSigner).rollToNextRound()
-        ).to.be.revertedWith("!keeper");
+        ).to.be.revertedWith("R4");
       });
 
       it("reverts when calling before round over", async function () {
@@ -2042,7 +2042,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.connect(keeperSigner).rollToNextRound()
-        ).to.be.revertedWith("!ready");
+        ).to.be.revertedWith("R39");
       });
 
       it("transfers funds to borrower", async function () {
@@ -2687,7 +2687,7 @@ function behavesLikeRibbonOptionsVault(params: {
           .approve(vault.address, depositAmount);
         await vault.deposit(depositAmount);
         await rollToNextRound();
-        await expect(vault.redeem(0)).to.be.revertedWith("!numShares");
+        await expect(vault.redeem(0)).to.be.revertedWith("R24");
       });
 
       it("reverts when redeeming more than available", async function () {
@@ -2699,7 +2699,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await rollToNextRound();
 
         await expect(vault.redeem(depositAmount.add(1))).to.be.revertedWith(
-          "Exceeds available"
+          "R30"
         );
       });
 
@@ -2755,7 +2755,7 @@ function behavesLikeRibbonOptionsVault(params: {
           .approve(vault.address, depositAmount);
         await vault.deposit(depositAmount);
 
-        await expect(vault.withdrawInstantly(0)).to.be.revertedWith("!amount");
+        await expect(vault.withdrawInstantly(0)).to.be.revertedWith("R21");
       });
 
       it("reverts when withdrawing more than available", async function () {
@@ -2781,7 +2781,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.withdrawInstantly(depositAmount.add(1))
-        ).to.be.revertedWith("Invalid round");
+        ).to.be.revertedWith("R32");
       });
 
       it("reverts when withdrawing next round", async function () {
@@ -2794,7 +2794,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.withdrawInstantly(depositAmount.add(1))
-        ).to.be.revertedWith("Invalid round");
+        ).to.be.revertedWith("R32");
       });
 
       it("withdraws the amount in deposit receipt", async function () {
@@ -2848,9 +2848,7 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("reverts when passed 0 shares", async function () {
-        await expect(vault.initiateWithdraw(0)).to.be.revertedWith(
-          "!numShares"
-        );
+        await expect(vault.initiateWithdraw(0)).to.be.revertedWith("R24");
       });
 
       it("reverts when withdrawing more than unredeemed balance", async function () {
@@ -2896,7 +2894,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.initiateWithdraw(depositAmount.div(2))
-        ).to.be.revertedWith("Existing withdraw");
+        ).to.be.revertedWith("R25");
       });
 
       it("creates withdrawal from unredeemed shares", async function () {
@@ -2982,7 +2980,7 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.equal(round, 2);
         assert.bnEqual(shares, depositAmount);
       });
-      it("reverts when there is insufficient balance over multiple calls", async function () {
+      it("reverts when there is R23 over multiple calls", async function () {
         await assetContract
           .connect(userSigner)
           .approve(vault.address, depositAmount);
@@ -3031,13 +3029,11 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when not initiated", async function () {
         await expect(
           vault.connect(ownerSigner).completeWithdraw()
-        ).to.be.revertedWith("Not initiated");
+        ).to.be.revertedWith("R26");
       });
 
       it("reverts when round not closed", async function () {
-        await expect(vault.completeWithdraw()).to.be.revertedWith(
-          "Round not closed"
-        );
+        await expect(vault.completeWithdraw()).to.be.revertedWith("R27");
       });
 
       it("reverts when calling completeWithdraw twice", async function () {
@@ -3207,7 +3203,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.connect(userSigner).stake(depositAmount.add(1))
-        ).to.be.revertedWith("Exceeds available");
+        ).to.be.revertedWith("R30");
       });
 
       it("reverts when staking more than available after redeeming", async function () {
@@ -3226,7 +3222,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(
           vault.connect(userSigner).stake(depositAmount.add(1))
-        ).to.be.revertedWith("Exceeds available");
+        ).to.be.revertedWith("R30");
       });
 
       it("stakes shares", async function () {
@@ -3388,9 +3384,7 @@ function behavesLikeRibbonOptionsVault(params: {
           await weth.approve(vault.address, depositAmount);
         }
 
-        await expect(vault.deposit(depositAmount)).to.be.revertedWith(
-          "Exceed cap"
-        );
+        await expect(vault.deposit(depositAmount)).to.be.revertedWith("R22");
       });
     });
 
@@ -3465,13 +3459,13 @@ function behavesLikeRibbonOptionsVault(params: {
         it("reverts when recovering the vault asset", async () => {
           await expect(
             vault.connect(ownerSigner).recoverTokens(collateralAsset, owner)
-          ).to.be.revertedWith("Vault asset not recoverable");
+          ).to.be.revertedWith("R35");
         });
 
         it("reverts when recovering the vault share", async () => {
           await expect(
             vault.connect(ownerSigner).recoverTokens(vault.address, owner)
-          ).to.be.revertedWith("Vault share not recoverable");
+          ).to.be.revertedWith("R36");
         });
 
         it("reverts when recovering to the vault itself", async () => {
@@ -3479,7 +3473,7 @@ function behavesLikeRibbonOptionsVault(params: {
             vault
               .connect(ownerSigner)
               .recoverTokens(wrongToken.address, vault.address)
-          ).to.be.revertedWith("Recipient cannot be vault");
+          ).to.be.revertedWith("R37");
         });
 
         it("recovers the tokens", async () => {
@@ -3907,7 +3901,7 @@ function behavesLikeRibbonOptionsVault(params: {
           pauser.connect(ownerSigner).processWithdrawal(vault.address, {
             gasPrice,
           })
-        ).to.be.revertedWith("!keeper");
+        ).to.be.revertedWith("R4");
       });
 
       it("process withdrawal", async function () {
