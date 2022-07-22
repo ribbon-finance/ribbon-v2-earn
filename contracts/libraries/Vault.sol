@@ -85,4 +85,18 @@ library Vault {
         // Number of shares withdrawn
         uint128 shares;
     }
+
+    /**
+     * @param borrowerWeight is the borrow weight of the borrower
+     * @param pendingBorrowerWeight is the pending borrow weight
+     * @param exists is whether the borrower has already been added
+     */
+    struct BorrowerState {
+        // Borrower exists
+        bool exists;
+        // Borrower weight
+        uint128 borrowerWeight;
+        // Borrower weight
+        uint128 pendingBorrowerWeight;
+    }
 }
