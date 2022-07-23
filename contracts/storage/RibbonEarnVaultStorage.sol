@@ -35,7 +35,7 @@ abstract contract RibbonEarnVaultStorageV1 {
     address[] public borrowers;
 
     /// @notice borrowerMapping is the mapping from borrower to their borrow weight. EX: {Wintermute -> 0.4, GSR -> 0.2}
-    mapping(address => Vault.BorrowerState) public borrowWeights;
+    mapping(address => Vault.BorrowerState) public borrowerWeights;
 
     /// @notice totalBorrowerWeight is the total borrowing weight
     uint256 public totalBorrowerWeight;
