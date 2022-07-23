@@ -58,7 +58,8 @@ import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
  * R27: cannot complete withdraw when round not closed yet
  * R28: withdraw amount in complete withdraw is zero
  * R29: cannot redeem zero shares
- * R30: cannot redeem more shares than available  * R31: cannot instantly withdraw zero
+ * R30: cannot redeem more shares than available
+ * R31: cannot instantly withdraw zero
  * R32: cannot withdraw in current round
  * R33: exceeding amount withdrawable instantly
  * R34: purchasing option to early since last purchase  * R35: vault asset not recoverable
@@ -134,7 +135,7 @@ contract RibbonEarnVault is
 
     event CapSet(uint256 oldCap, uint256 newCap);
 
-    event BorrowerBasketUpdated(address[] borrowers, uint128[] borrowWeights);
+    event BorrowerBasketUpdated(address[] borrowers, uint128[] borrowerWeights);
 
     event CommitBorrowerBasket(uint256 totalBorrowerWeight);
 
@@ -193,7 +194,7 @@ contract RibbonEarnVault is
      * @param _owner is the owner of the vault with critical permissions
      * @param _feeRecipient is the address to recieve vault performance and management fees
      * @param _borrowers is the addresses of the basket of borrowing entities (EX: Wintermute, GSR, Alameda, Genesis)
-     * @param _borrowWeights is the borrow weight of the addresses
+     * @param _borrowerWeights is the borrow weight of the addresses
      * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
      * @param _managementFee is the management fee pct.
      * @param _performanceFee is the perfomance fee pct.
@@ -204,7 +205,7 @@ contract RibbonEarnVault is
         address _owner;
         address _keeper;
         address[] _borrowers;
-        uint128[] _borrowWeights;
+        uint128[] _borrowerWeights;
         address _optionSeller;
         address _feeRecipient;
         uint256 _managementFee;
@@ -260,7 +261,7 @@ contract RibbonEarnVault is
 
         _updateBorrowerBasket(
             _initParams._borrowers,
-            _initParams._borrowWeights
+            _initParams._borrowerWeights
         );
 
         uint256 assetBalance =
@@ -283,7 +284,7 @@ contract RibbonEarnVault is
      * @dev Throws if called by any account other than the borrower.
      */
     modifier onlyBorrower() {
-        require(borrowWeights[msg.sender].borrowerWeight > 0, "R5");
+        require(borrowerWeights[msg.sender].borrowerWeight > 0, "R5");
         _;
     }
 
@@ -320,13 +321,13 @@ contract RibbonEarnVault is
     /**
      * @notice Updates the basket of borrowers (this overrides current pending update to basket)
      * @param borrowers is the array of borrowers to update
-     * @param borrowWeights is the array of corresponding borrow weights for the borrower
+     * @param borrowerWeights is the array of corresponding borrow weights for the borrower
      */
     function updateBorrowerBasket(
         address[] calldata borrowers,
-        uint128[] calldata borrowWeights
+        uint128[] calldata borrowerWeights
     ) external onlyOwner {
-        _updateBorrowerBasket(borrowers, borrowWeights);
+        _updateBorrowerBasket(borrowers, borrowerWeights);
         lastBorrowerBasketChange = block.timestamp;
     }
 
@@ -850,7 +851,8 @@ contract RibbonEarnVault is
         for (uint256 i = 0; i < borrowers.length; i++) {
             // Amount to lending = total USD loan allocation * weight of current borrower / total weight of all borrowers
             uint256 amtToLendToBorrower =
-                (loanAllocation * borrowWeights[borrowers[i]].borrowerWeight) /
+                (loanAllocation *
+                    borrowerWeights[borrowers[i]].borrowerWeight) /
                     totalBorrowerWeight;
 
             // Lend funds to borrower
@@ -875,14 +877,10 @@ contract RibbonEarnVault is
             "R34"
         );
 
-        uint8 optionPurchasesPerLoanTerm =
-            SafeCast.toUint8(
-                uint256(allocationState.currentLoanTermLength) /
-                    allocationState.currentOptionPurchaseFreq
-            );
-
         uint256 optionAllocation =
-            allocationState.optionAllocation / optionPurchasesPerLoanTerm;
+            allocationState.optionAllocation /
+                (uint256(allocationState.currentLoanTermLength) /
+                    allocationState.currentOptionPurchaseFreq);
 
         vaultState.optionsBoughtInRound += uint128(optionAllocation);
         vaultState.lastOptionPurchaseTime = uint64(block.timestamp);
@@ -1195,12 +1193,13 @@ contract RibbonEarnVault is
             }
 
             // Borrower does not exist
-            if (!borrowWeights[borrowers[i]].exists) {
+            if (!borrowerWeights[pendingBorrowers[i]].exists) {
                 borrowers.push(pendingBorrowers[i]);
+                borrowerWeights[pendingBorrowers[i]].exists = true;
             }
 
             // Set pending borrower weight
-            borrowWeights[pendingBorrowers[i]]
+            borrowerWeights[pendingBorrowers[i]]
                 .pendingBorrowerWeight = pendingBorrowWeights[i];
         }
 
@@ -1215,12 +1214,12 @@ contract RibbonEarnVault is
 
         // Set current pending changes to basket of borrowers
         for (uint256 i = 0; i < borrowers.length; i++) {
-            uint128 borrowWeight = borrowWeights[borrowers[i]].borrowerWeight;
+            uint128 borrowWeight = borrowerWeights[borrowers[i]].borrowerWeight;
             uint128 pendingBorrowWeight =
-                borrowWeights[borrowers[i]].pendingBorrowerWeight;
+                borrowerWeights[borrowers[i]].pendingBorrowerWeight;
             // Set borrower weight to pending borrower weight
             if (borrowWeight != pendingBorrowWeight) {
-                borrowWeights[borrowers[i]]
+                borrowerWeights[borrowers[i]]
                     .borrowerWeight = pendingBorrowWeight;
                 // Update total borrowing weight
                 totalBorrowerWeight += pendingBorrowWeight;

@@ -122,6 +122,34 @@ export const PERP_OWNER_ADDRESS = {
 };
 
 /**
+ * Ribbon Earn borrowers
+ */
+
+export const BORROWERS = {
+  [CHAINID.ETH_MAINNET]: [
+    "0x55FE002aefF02F77364de339a1292923A15844B8",
+    "0x78605Df79524164911C144801f41e9811B7DB73D",
+  ],
+  [CHAINID.ETH_KOVAN]: [],
+  [CHAINID.AVAX_MAINNET]: [],
+  [CHAINID.AVAX_FUJI]: [],
+};
+
+export const BORROWER_WEIGHTS = {
+  [CHAINID.ETH_MAINNET]: [5000, 5000],
+  [CHAINID.ETH_KOVAN]: [5000, 5000],
+  [CHAINID.AVAX_MAINNET]: [5000, 5000],
+  [CHAINID.AVAX_FUJI]: [5000, 5000],
+};
+
+export const OPTION_SELLER = {
+  [CHAINID.ETH_MAINNET]: "0x0548F59fEE79f8832C299e01dCA5c76F034F558e",
+  [CHAINID.ETH_KOVAN]: "",
+  [CHAINID.AVAX_MAINNET]: "",
+  [CHAINID.AVAX_FUJI]: "",
+};
+
+/**
  * Chainlink Oracles
  *
  * https://data.chain.link/
