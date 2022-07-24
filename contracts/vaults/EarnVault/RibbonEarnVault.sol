@@ -855,6 +855,10 @@ contract RibbonEarnVault is
                     borrowerWeights[borrowers[i]].borrowerWeight) /
                     totalBorrowerWeight;
 
+            if (amtToLendToBorrower == 0) {
+                continue;
+            }
+
             // Lend funds to borrower
             IERC20(vaultParams.asset).safeTransfer(
                 borrowers[i],
