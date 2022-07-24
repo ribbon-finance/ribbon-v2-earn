@@ -32,7 +32,6 @@ moment.tz.setDefault("UTC");
 
 const gasPrice = parseUnits("30", "gwei");
 const FEE_SCALING = BigNumber.from(10).pow(6);
-const YIELD_SCALING = BigNumber.from(10).pow(2);
 
 const WEEKS_PER_YEAR = 52142857;
 const SECONDS_PER_DAY = 86400;
@@ -276,7 +275,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
       // Set up borrower signers
       for (let i = 0; i < borrowers.length; i++) {
-        if (i == 0) {
+        if (i === 0) {
           borrowerSigner = await ethers.provider.getSigner(borrowers[i]);
         }
         await network.provider.request({
@@ -2340,7 +2339,7 @@ function behavesLikeRibbonOptionsVault(params: {
       it("commits borrow basket with new update", async function () {
         assert.equal(await vault.totalBorrowerWeight(), 0);
 
-        let firstTx = await vault.connect(keeperSigner).rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         let totalBorrowerWeight = await vault.totalBorrowerWeight();
 
@@ -2438,7 +2437,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await assetContract.balanceOf(vault.address);
 
-        const secondTx = await vault.connect(keeperSigner).rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         for (let i = 0; i < borrowers.length; i++) {
           await expect(firstTx)
