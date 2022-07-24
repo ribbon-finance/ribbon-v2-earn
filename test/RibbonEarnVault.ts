@@ -2336,7 +2336,7 @@ function behavesLikeRibbonOptionsVault(params: {
           .withArgs(totalBorrowerWeight);
       });
 
-      it("commits borrow basket with new update", async function () {
+      it("commits borrow basket with new basket update", async function () {
         assert.equal(await vault.totalBorrowerWeight(), 0);
 
         await vault.connect(keeperSigner).rollToNextRound();
@@ -2371,6 +2371,39 @@ function behavesLikeRibbonOptionsVault(params: {
           totalBorrowerWeight2.sub(totalBorrowerWeight),
           addedWeight
         );
+      });
+
+      it("removes allocation to borrower with new basket update", async function () {
+        await vault.connect(keeperSigner).rollToNextRound();
+
+        let totalBorrowerWeight = await vault.totalBorrowerWeight();
+        let balBefore = await assetContract.balanceOf(borrowers[0]);
+
+        await vault
+          .connect(ownerSigner)
+          .updateBorrowerBasket([borrowers[0]], [0]);
+
+        // Time increase to next round
+        await time.increaseTo(
+          (
+            await vault.vaultState()
+          ).lastEpochTime.add(
+            (
+              await vault.allocationState()
+            ).currentLoanTermLength
+          )
+        );
+
+        await vault.connect(keeperSigner).rollToNextRound();
+
+        let totalBorrowerWeight2 = await vault.totalBorrowerWeight();
+        let balAfter = await assetContract.balanceOf(borrowers[0]);
+
+        assert.equal(
+          totalBorrowerWeight.sub(totalBorrowerWeight2).toString(),
+          borrowerWeights[0].toString()
+        );
+        assert.equal(balAfter.sub(balBefore).toString(), "0");
       });
 
       it("withdraws and roll funds into next round, after breaking even", async function () {
