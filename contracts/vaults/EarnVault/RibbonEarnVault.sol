@@ -28,6 +28,58 @@ import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
 
 /**
+ * Earn Vault Error Codes
+ * R1: loan allocation in USD must be 0
+ * R2: option allocation in USD must be 0
+ * R3: invalid owner address
+ * R4: msg.sender is not keeper
+ * R5: msg.sender borrower weight is 0
+ * R6: msg.sender is not option seller
+ * R7: invalid keeper address
+ * R8: invalid fee recipient address
+ * R9: invalid option seller
+ * R10: time lock still active
+ * R11: management fee greater than 100%
+ * R12: performance fee greater than 100%
+ * R13: deposit cap is zero
+ * R14: loan allocation is greater than 100%
+ * R15: loan term length is less than a day
+ * R16: option purchase frequency is zero
+ * R17: option purchase frequency is greater than loan term length
+ * R18: cannot use depositETH in non-eth vault
+ * R19: cannot use depositETH with msg.value = 0
+ * R20: vault asset is not USDC
+ * R21: deposit amount is 0
+ * R22: deposit amount exceeds vault cap
+ * R23: deposit amount less than minimum supply
+ * R24: cannot initiate withdraw on 0 shares
+ * R25: a withdraw has already been initiated
+ * R26: cannot complete withdraw when not initiated
+ * R27: cannot complete withdraw when round not closed yet
+ * R28: withdraw amount in complete withdraw is zero
+ * R29: cannot redeem zero shares
+ * R30: cannot redeem more shares than available
+ * R31: cannot instantly withdraw zero
+ * R32: cannot withdraw in current round
+ * R33: exceeding amount withdrawable instantly
+ * R34: purchasing option to early since last purchase  * R35: vault asset not recoverable
+ * R36: vault share not recoverable
+ * R37: recipient cannot be vault
+ * R38: transfer failed  * R39: premature roll to next round
+ * R40: array length mismatch
+ * R41: invalid token name
+ * R42: invalid token symbol
+ * R43: invalid vault asset
+ * R44: invalid vault minimum supply
+ * R45: deposit cap must be higher than minimum supply
+ * R46: next loan term length must be 0
+ * R47: next option purchase frequency must be 0
+ * R48: current loan term length must be >= 1 day
+ * R49: current option purchase freq must be < loan term length
+ * R50: loan pct + option pct == total PCT
+ */
+
+/**
  * UPGRADEABILITY: Since we use the upgradeable proxy pattern, we must observe
  * the inheritance chain closely.
  * Any changes/appends in storage variable needs to happen in RibbonEarnVaultStorage.
@@ -52,10 +104,10 @@ contract RibbonEarnVault is
      ***********************************************/
 
     /// @notice WETH9 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
-    address public immutable WETH;
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     /// @notice USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
-    address public immutable USDC;
+    address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     uint16 public constant TOTAL_PCT = 10000; // Equals 100%
 
@@ -83,7 +135,9 @@ contract RibbonEarnVault is
 
     event CapSet(uint256 oldCap, uint256 newCap);
 
-    event BorrowerSet(address oldBorrower, address newBorrower);
+    event BorrowerBasketUpdated(address[] borrowers, uint128[] borrowerWeights);
+
+    event CommitBorrowerBasket(uint256 totalBorrowerWeight);
 
     event OptionSellerSet(address oldOptionSeller, address newOptionSeller);
 
@@ -115,19 +169,13 @@ contract RibbonEarnVault is
 
     event OpenLoan(uint256 amount, address indexed borrower);
 
-    event CloseLoan(
-        uint256 amount,
-        uint256 yield,
-        uint256 yearlyInterest,
-        address indexed borrower
-    );
+    event CloseLoan(uint256 amount, uint256 yield, address indexed borrower);
 
     event PurchaseOption(uint256 premium, address indexed seller);
 
     event PayOptionYield(
         uint256 yield,
         uint256 netYield,
-        uint256 pctPayoff,
         address indexed seller
     );
 
@@ -145,7 +193,8 @@ contract RibbonEarnVault is
      * @notice Initialization parameters for the vault.
      * @param _owner is the owner of the vault with critical permissions
      * @param _feeRecipient is the address to recieve vault performance and management fees
-     * @param _borrower is the address of the borrowing entity (EX: Wintermute, GSR, Alameda, Genesis)
+     * @param _borrowers is the addresses of the basket of borrowing entities (EX: Wintermute, GSR, Alameda, Genesis)
+     * @param _borrowerWeights is the borrow weight of the addresses
      * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
      * @param _managementFee is the management fee pct.
      * @param _performanceFee is the perfomance fee pct.
@@ -155,7 +204,8 @@ contract RibbonEarnVault is
     struct InitParams {
         address _owner;
         address _keeper;
-        address _borrower;
+        address[] _borrowers;
+        uint128[] _borrowerWeights;
         address _optionSeller;
         address _feeRecipient;
         uint256 _managementFee;
@@ -169,19 +219,6 @@ contract RibbonEarnVault is
      ***********************************************/
 
     /**
-     * @notice Initializes the contract with immutable variables
-     * @param _weth is the Wrapped Ether contract
-     * @param _usdc is the USDC contract
-     */
-    constructor(address _weth, address _usdc) {
-        require(_weth != address(0), "!_weth");
-        require(_usdc != address(0), "!_usdc");
-
-        WETH = _weth;
-        USDC = _usdc;
-    }
-
-    /**
      * @notice Initializes the OptionVault contract with storage variables.
      * @param _initParams is the struct with vault initialization parameters
      * @param _vaultParams is the struct with vault general data
@@ -192,12 +229,11 @@ contract RibbonEarnVault is
         Vault.VaultParams calldata _vaultParams,
         Vault.AllocationState calldata _allocationState
     ) external initializer {
-        require(_initParams._owner != address(0), "!owner");
+        require(_initParams._owner != address(0), "R3");
 
         VaultLifecycleEarn.verifyInitializerParams(
             _initParams._keeper,
             _initParams._feeRecipient,
-            _initParams._borrower,
             _initParams._optionSeller,
             _initParams._managementFee,
             _initParams._performanceFee,
@@ -215,7 +251,6 @@ contract RibbonEarnVault is
         keeper = _initParams._keeper;
 
         feeRecipient = _initParams._feeRecipient;
-        borrower = _initParams._borrower;
         optionSeller = _initParams._optionSeller;
         performanceFee = _initParams._performanceFee;
         managementFee =
@@ -223,6 +258,11 @@ contract RibbonEarnVault is
             WEEKS_PER_YEAR;
         vaultParams = _vaultParams;
         allocationState = _allocationState;
+
+        _updateBorrowerBasket(
+            _initParams._borrowers,
+            _initParams._borrowerWeights
+        );
 
         uint256 assetBalance =
             IERC20(vaultParams.asset).balanceOf(address(this));
@@ -236,7 +276,7 @@ contract RibbonEarnVault is
      * @dev Throws if called by any account other than the keeper.
      */
     modifier onlyKeeper() {
-        require(msg.sender == keeper, "!keeper");
+        require(msg.sender == keeper, "R4");
         _;
     }
 
@@ -244,7 +284,7 @@ contract RibbonEarnVault is
      * @dev Throws if called by any account other than the borrower.
      */
     modifier onlyBorrower() {
-        require(msg.sender == borrower, "!borrower");
+        require(borrowerWeights[msg.sender].borrowerWeight > 0, "R5");
         _;
     }
 
@@ -252,7 +292,7 @@ contract RibbonEarnVault is
      * @dev Throws if called by any account other than the option seller.
      */
     modifier onlyOptionSeller() {
-        require(msg.sender == optionSeller, "!optionSeller");
+        require(msg.sender == optionSeller, "R6");
         _;
     }
 
@@ -265,7 +305,7 @@ contract RibbonEarnVault is
      * @param newKeeper is the address of the new keeper
      */
     function setNewKeeper(address newKeeper) external onlyOwner {
-        require(newKeeper != address(0), "!newKeeper");
+        require(newKeeper != address(0), "R7");
         keeper = newKeeper;
     }
 
@@ -274,21 +314,21 @@ contract RibbonEarnVault is
      * @param newFeeRecipient is the address of the new fee recipient
      */
     function setFeeRecipient(address newFeeRecipient) external onlyOwner {
-        require(newFeeRecipient != address(0), "!newFeeRecipient");
-        require(newFeeRecipient != feeRecipient, "Must be new feeRecipient");
+        require(newFeeRecipient != address(0), "R8");
         feeRecipient = newFeeRecipient;
     }
 
     /**
-     * @notice Sets the new borrower
-     * @param newBorrower is the address of the new borrower
+     * @notice Updates the basket of borrowers (this overrides current pending update to basket)
+     * @param borrowers is the array of borrowers to update
+     * @param borrowerWeights is the array of corresponding borrow weights for the borrower
      */
-    function setBorrower(address newBorrower) external onlyOwner {
-        require(newBorrower != address(0), "!newBorrower");
-        require(newBorrower != borrower, "Must be new borrower");
-        emit BorrowerSet(borrower, newBorrower);
-        pendingBorrower = newBorrower;
-        lastBorrowerChange = block.timestamp;
+    function updateBorrowerBasket(
+        address[] calldata borrowers,
+        uint128[] calldata borrowerWeights
+    ) external onlyOwner {
+        _updateBorrowerBasket(borrowers, borrowerWeights);
+        lastBorrowerBasketChange = block.timestamp;
     }
 
     /**
@@ -296,30 +336,17 @@ contract RibbonEarnVault is
      * @param newOptionSeller is the address of the new option seller
      */
     function setOptionSeller(address newOptionSeller) external onlyOwner {
-        require(newOptionSeller != address(0), "!newOptionSeller");
-        require(newOptionSeller != optionSeller, "Must be new option seller");
+        require(newOptionSeller != address(0), "R9");
         emit OptionSellerSet(optionSeller, newOptionSeller);
         pendingOptionSeller = newOptionSeller;
         lastOptionSellerChange = block.timestamp;
     }
 
     /**
-     * @notice Commits the pending borrower
-     */
-    function commitBorrower() external onlyOwner {
-        require(block.timestamp >= (lastBorrowerChange + 3 days), "!timelock");
-        borrower = pendingBorrower;
-        pendingBorrower = address(0);
-    }
-
-    /**
      * @notice Commits the option seller
      */
     function commitOptionSeller() external onlyOwner {
-        require(
-            block.timestamp >= (lastOptionSellerChange + 3 days),
-            "!timelock"
-        );
+        require(block.timestamp >= (lastOptionSellerChange + 3 days), "R10");
         optionSeller = pendingOptionSeller;
         pendingOptionSeller = address(0);
     }
@@ -329,10 +356,7 @@ contract RibbonEarnVault is
      * @param newManagementFee is the management fee (6 decimals). ex: 2 * 10 ** 6 = 2%
      */
     function setManagementFee(uint256 newManagementFee) external onlyOwner {
-        require(
-            newManagementFee < 100 * Vault.FEE_MULTIPLIER,
-            "Invalid management fee"
-        );
+        require(newManagementFee < 100 * Vault.FEE_MULTIPLIER, "R11");
 
         // We are dividing annualized management fee by num weeks in a year
         uint256 tmpManagementFee =
@@ -348,10 +372,7 @@ contract RibbonEarnVault is
      * @param newPerformanceFee is the performance fee (6 decimals). ex: 20 * 10 ** 6 = 20%
      */
     function setPerformanceFee(uint256 newPerformanceFee) external onlyOwner {
-        require(
-            newPerformanceFee < 100 * Vault.FEE_MULTIPLIER,
-            "Invalid performance fee"
-        );
+        require(newPerformanceFee < 100 * Vault.FEE_MULTIPLIER, "R12");
 
         emit PerformanceFeeSet(performanceFee, newPerformanceFee);
 
@@ -363,7 +384,7 @@ contract RibbonEarnVault is
      * @param newCap is the new cap for deposits
      */
     function setCap(uint256 newCap) external onlyOwner {
-        require(newCap > 0, "!newCap");
+        require(newCap > 0, "R13");
         ShareMath.assertUint104(newCap);
         emit CapSet(vaultParams.cap, newCap);
         vaultParams.cap = uint104(newCap);
@@ -378,7 +399,7 @@ contract RibbonEarnVault is
         external
         onlyOwner
     {
-        require(_loanAllocationPCT <= TOTAL_PCT, "!_loanAllocationPCT");
+        require(_loanAllocationPCT <= TOTAL_PCT, "R14");
         uint16 nextOptionAllocationPCT =
             uint16(uint256(TOTAL_PCT) - _loanAllocationPCT);
 
@@ -399,7 +420,7 @@ contract RibbonEarnVault is
      * @param _loanTermLength new loan term length
      */
     function setLoanTermLength(uint32 _loanTermLength) external onlyOwner {
-        require(_loanTermLength >= 1 days, "!_loanTermLength");
+        require(_loanTermLength >= 1 days, "R15");
 
         allocationState.nextLoanTermLength = _loanTermLength;
         emit NewLoanTermLength(
@@ -417,13 +438,13 @@ contract RibbonEarnVault is
         external
         onlyOwner
     {
-        require(_optionPurchaseFreq > 0, "!_optionPurchaseFreq");
+        require(_optionPurchaseFreq > 0, "R16");
 
         require(
             (allocationState.nextLoanTermLength == 0 &&
                 _optionPurchaseFreq <= allocationState.currentLoanTermLength) ||
                 _optionPurchaseFreq <= allocationState.nextLoanTermLength,
-            "! _optionPurchaseFreq < loanTermLength"
+            "R17"
         );
         allocationState.nextOptionPurchaseFreq = _optionPurchaseFreq;
         emit NewOptionPurchaseFrequency(
@@ -456,8 +477,8 @@ contract RibbonEarnVault is
      * @notice Deposits ETH into the contract and mint vault shares. Reverts if the asset is not WETH.
      */
     function depositETH() external payable nonReentrant {
-        require(vaultParams.asset == WETH, "!WETH");
-        require(msg.value > 0, "!value");
+        require(vaultParams.asset == WETH, "R18");
+        require(msg.value > 0, "R19");
 
         _depositFor(msg.value, msg.sender);
 
@@ -481,8 +502,8 @@ contract RibbonEarnVault is
         bytes32 r,
         bytes32 s
     ) external nonReentrant {
-        require(vaultParams.asset == USDC, "!USDC");
-        require(amount > 0, "!amount");
+        require(vaultParams.asset == USDC, "R20");
+        require(amount > 0, "R21");
 
         // Sign for transfer approval
         IERC20Permit(vaultParams.asset).permit(
@@ -510,7 +531,7 @@ contract RibbonEarnVault is
      * @param amount is the amount of `asset` to deposit
      */
     function deposit(uint256 amount) external nonReentrant {
-        require(amount > 0, "!amount");
+        require(amount > 0, "R21");
 
         _depositFor(amount, msg.sender);
 
@@ -532,7 +553,7 @@ contract RibbonEarnVault is
         external
         nonReentrant
     {
-        require(amount > 0, "!amount");
+        require(amount > 0, "R21");
         require(creditor != address(0));
 
         _depositFor(amount, creditor);
@@ -554,11 +575,8 @@ contract RibbonEarnVault is
         uint256 currentRound = vaultState.round;
         uint256 totalWithDepositedAmount = totalBalance() + amount;
 
-        require(totalWithDepositedAmount <= vaultParams.cap, "Exceed cap");
-        require(
-            totalWithDepositedAmount >= vaultParams.minimumSupply,
-            "Insufficient balance"
-        );
+        require(totalWithDepositedAmount <= vaultParams.cap, "R22");
+        require(totalWithDepositedAmount >= vaultParams.minimumSupply, "R23");
 
         emit Deposit(creditor, amount, currentRound);
 
@@ -599,7 +617,7 @@ contract RibbonEarnVault is
      * @param numShares is the number of shares to withdraw
      */
     function _initiateWithdraw(uint256 numShares) internal {
-        require(numShares > 0, "!numShares");
+        require(numShares > 0, "R24");
 
         // We do a max redeem before initiating a withdrawal
         // But we check if they must first have unredeemed shares
@@ -624,7 +642,7 @@ contract RibbonEarnVault is
         if (withdrawalIsSameRound) {
             withdrawalShares = existingShares + numShares;
         } else {
-            require(existingShares == 0, "Existing withdraw");
+            require(existingShares == 0, "R25");
             withdrawalShares = numShares;
             withdrawals[msg.sender].round = uint16(currentRound);
         }
@@ -646,9 +664,9 @@ contract RibbonEarnVault is
         uint256 withdrawalRound = withdrawal.round;
 
         // This checks if there is a withdrawal
-        require(withdrawalShares > 0, "Not initiated");
+        require(withdrawalShares > 0, "R26");
 
-        require(withdrawalRound < vaultState.round, "Round not closed");
+        require(withdrawalRound < vaultState.round, "R27");
 
         // We leave the round number as non-zero to save on gas for subsequent writes
         withdrawals[msg.sender].shares = 0;
@@ -667,7 +685,7 @@ contract RibbonEarnVault is
 
         _burn(address(this), withdrawalShares);
 
-        require(withdrawAmount > 0, "!withdrawAmount");
+        require(withdrawAmount > 0, "R28");
         transferAsset(msg.sender, withdrawAmount);
 
         return withdrawAmount;
@@ -678,7 +696,7 @@ contract RibbonEarnVault is
      * @param numShares is the number of shares to redeem
      */
     function redeem(uint256 numShares) external nonReentrant {
-        require(numShares > 0, "!numShares");
+        require(numShares > 0, "R29");
         _redeem(numShares, false);
     }
 
@@ -713,7 +731,7 @@ contract RibbonEarnVault is
         if (numShares == 0) {
             return;
         }
-        require(numShares <= unredeemedShares, "Exceeds available");
+        require(numShares <= unredeemedShares, "R30");
 
         // If we have a depositReceipt on the same round, BUT we have some unredeemed shares
         // we debit from the unredeemedShares, but leave the amount field intact
@@ -741,11 +759,11 @@ contract RibbonEarnVault is
             depositReceipts[msg.sender];
 
         uint256 currentRound = vaultState.round;
-        require(amount > 0, "!amount");
-        require(depositReceipt.round == currentRound, "Invalid round");
+        require(amount > 0, "R31");
+        require(depositReceipt.round == currentRound, "R32");
 
         uint256 receiptAmount = depositReceipt.amount;
-        require(receiptAmount >= amount, "Exceed amount");
+        require(receiptAmount >= amount, "R33");
 
         // Subtraction underflow checks already ensure it is smaller than uint104
         depositReceipt.amount = uint104(receiptAmount - amount);
@@ -830,10 +848,25 @@ contract RibbonEarnVault is
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
-        // Lend funds to borrower
-        IERC20(vaultParams.asset).safeTransfer(borrower, loanAllocation);
+        for (uint256 i = 0; i < borrowers.length; i++) {
+            // Amount to lending = total USD loan allocation * weight of current borrower / total weight of all borrowers
+            uint256 amtToLendToBorrower =
+                (loanAllocation *
+                    borrowerWeights[borrowers[i]].borrowerWeight) /
+                    totalBorrowerWeight;
 
-        emit OpenLoan(loanAllocation, borrower);
+            if (amtToLendToBorrower == 0) {
+                continue;
+            }
+
+            // Lend funds to borrower
+            IERC20(vaultParams.asset).safeTransfer(
+                borrowers[i],
+                amtToLendToBorrower
+            );
+
+            emit OpenLoan(amtToLendToBorrower, borrowers[i]);
+        }
     }
 
     /**
@@ -845,17 +878,13 @@ contract RibbonEarnVault is
                 block.timestamp >=
                 uint256(vaultState.lastOptionPurchaseTime) +
                     allocationState.currentOptionPurchaseFreq,
-            "Purchase does not fulfill frequency"
+            "R34"
         );
 
-        uint8 optionPurchasesPerLoanTerm =
-            SafeCast.toUint8(
-                uint256(allocationState.currentLoanTermLength) /
-                    allocationState.currentOptionPurchaseFreq
-            );
-
         uint256 optionAllocation =
-            allocationState.optionAllocation / optionPurchasesPerLoanTerm;
+            allocationState.optionAllocation /
+                (uint256(allocationState.currentLoanTermLength) /
+                    allocationState.currentOptionPurchaseFreq);
 
         vaultState.optionsBoughtInRound += uint128(optionAllocation);
         vaultState.lastOptionPurchaseTime = uint64(block.timestamp);
@@ -956,9 +985,9 @@ contract RibbonEarnVault is
         external
         onlyOwner
     {
-        require(token != vaultParams.asset, "Vault asset not recoverable");
-        require(token != address(this), "Vault share not recoverable");
-        require(recipient != address(this), "Recipient cannot be vault");
+        require(token != vaultParams.asset, "R35");
+        require(token != address(this), "R36");
+        require(recipient != address(this), "R37");
 
         IERC20(token).safeTransfer(
             recipient,
@@ -991,7 +1020,7 @@ contract RibbonEarnVault is
         if (asset == WETH) {
             IWETH(WETH).withdraw(amount);
             (bool success, ) = recipient.call{value: amount}("");
-            require(success, "Transfer failed");
+            require(success, "R38");
             return;
         }
         IERC20(asset).safeTransfer(recipient, amount);
@@ -1013,7 +1042,7 @@ contract RibbonEarnVault is
             block.timestamp >=
                 uint256(vaultState.lastEpochTime) +
                     allocationState.currentLoanTermLength,
-            "!ready"
+            "R39"
         );
 
         address recipient = feeRecipient;
@@ -1067,6 +1096,7 @@ contract RibbonEarnVault is
         }
 
         _updateAllocationState(lockedBalance);
+        _commitBorrowerBasket();
 
         return (lockedBalance, queuedWithdrawAmount);
     }
@@ -1077,27 +1107,22 @@ contract RibbonEarnVault is
      * @param amount is the amount of yield to pay
      */
     function _payOptionYield(uint256 amount) internal {
-        address asset = vaultParams.asset;
-
-        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
-
-        uint8 optionPurchasesPerLoanTerm =
-            SafeCast.toUint8(
-                uint256(allocationState.currentLoanTermLength) /
-                    allocationState.currentOptionPurchaseFreq
-            );
+        IERC20(vaultParams.asset).safeTransferFrom(
+            msg.sender,
+            address(this),
+            amount
+        );
 
         uint256 optionAllocation =
-            allocationState.optionAllocation / optionPurchasesPerLoanTerm;
+            allocationState.optionAllocation /
+                (uint256(allocationState.currentLoanTermLength) /
+                    allocationState.currentOptionPurchaseFreq);
 
-        uint256 yieldInUSD =
-            amount > optionAllocation ? amount - optionAllocation : 0;
-        uint256 yieldInPCT =
-            amount > optionAllocation
-                ? (amount * Vault.YIELD_MULTIPLIER) / optionAllocation
-                : 0;
-
-        emit PayOptionYield(amount, yieldInUSD, yieldInPCT, msg.sender);
+        emit PayOptionYield(
+            amount,
+            amount > optionAllocation ? amount - optionAllocation : 0,
+            msg.sender
+        );
     }
 
     function _returnLentFunds(uint256 amount) internal {
@@ -1109,14 +1134,11 @@ contract RibbonEarnVault is
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
-        uint256 yield = amount > loanAllocation ? amount - loanAllocation : 0;
-
         vaultState.amtFundsReturned += amount;
 
         emit CloseLoan(
             amount,
-            yield,
-            loanAllocation > 0 ? ((yield * 12) * 10**2) / loanAllocation : 0,
+            amount > loanAllocation ? amount - loanAllocation : 0,
             msg.sender
         );
     }
@@ -1153,6 +1175,63 @@ contract RibbonEarnVault is
         allocationState.optionAllocation =
             lockedBalance -
             allocationState.loanAllocation;
+    }
+
+    /**
+     * @notice Helper function to update basket of borrowers
+     * @param pendingBorrowers is the array of borrowers to add
+     * @param pendingBorrowWeights is the array of corresponding borrow weights for the borrower
+     */
+    function _updateBorrowerBasket(
+        address[] calldata pendingBorrowers,
+        uint128[] calldata pendingBorrowWeights
+    ) internal {
+        uint256 borrowerArrLen = pendingBorrowers.length;
+
+        require(borrowerArrLen == pendingBorrowWeights.length, "R40");
+
+        // Set current pending changes to basket of borrowers
+        for (uint256 i = 0; i < borrowerArrLen; i++) {
+            if (pendingBorrowers[i] == address(0)) {
+                continue;
+            }
+
+            // Borrower does not exist
+            if (!borrowerWeights[pendingBorrowers[i]].exists) {
+                borrowers.push(pendingBorrowers[i]);
+                borrowerWeights[pendingBorrowers[i]].exists = true;
+            }
+
+            // Set pending borrower weight
+            borrowerWeights[pendingBorrowers[i]]
+                .pendingBorrowerWeight = pendingBorrowWeights[i];
+        }
+
+        emit BorrowerBasketUpdated(pendingBorrowers, pendingBorrowWeights);
+    }
+
+    /**
+     * @notice Helper function that commits borrower basket
+     */
+    function _commitBorrowerBasket() internal {
+        require(block.timestamp >= (lastBorrowerBasketChange + 3 days), "R10");
+
+        // Set current pending changes to basket of borrowers
+        for (uint256 i = 0; i < borrowers.length; i++) {
+            uint128 borrowWeight = borrowerWeights[borrowers[i]].borrowerWeight;
+            uint128 pendingBorrowWeight =
+                borrowerWeights[borrowers[i]].pendingBorrowerWeight;
+            // Set borrower weight to pending borrower weight
+            if (borrowWeight != pendingBorrowWeight) {
+                borrowerWeights[borrowers[i]]
+                    .borrowerWeight = pendingBorrowWeight;
+                // Update total borrowing weight
+                totalBorrowerWeight += pendingBorrowWeight;
+                totalBorrowerWeight -= borrowWeight;
+            }
+        }
+
+        emit CommitBorrowerBasket(totalBorrowerWeight);
     }
 
     /************************************************
