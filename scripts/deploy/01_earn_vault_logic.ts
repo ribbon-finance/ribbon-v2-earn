@@ -10,8 +10,6 @@ const main = async ({
   const { deployer } = await getNamedAccounts();
   console.log(`01 - Deploying Earn Vault logic on ${network.name}`);
 
-  const chainId = network.config.chainId;
-
   const lifecycle = await deploy("VaultLifecycleEarn", {
     contract: "VaultLifecycleEarn",
     from: deployer,
