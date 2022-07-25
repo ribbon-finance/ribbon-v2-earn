@@ -1,6 +1,5 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { WETH_ADDRESS, USDC_ADDRESS } from "../../constants/constants";
 
 const main = async ({
   network,
@@ -11,8 +10,6 @@ const main = async ({
   const { deployer } = await getNamedAccounts();
   console.log(`01 - Deploying Earn Vault logic on ${network.name}`);
 
-  const chainId = network.config.chainId;
-
   const lifecycle = await deploy("VaultLifecycleEarn", {
     contract: "VaultLifecycleEarn",
     from: deployer,
@@ -22,7 +19,7 @@ const main = async ({
   const vault = await deploy("RibbonEarnVaultLogic", {
     contract: "RibbonEarnVault",
     from: deployer,
-    args: [WETH_ADDRESS[chainId], USDC_ADDRESS[chainId]],
+    args: [],
     libraries: {
       VaultLifecycleEarn: lifecycle.address,
     },
@@ -41,7 +38,7 @@ const main = async ({
   try {
     await run("verify:verify", {
       address: vault.address,
-      constructorArguments: [WETH_ADDRESS[chainId], USDC_ADDRESS[chainId]],
+      constructorArguments: [],
     });
   } catch (error) {
     console.log(error);

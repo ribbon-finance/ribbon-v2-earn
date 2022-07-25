@@ -4,7 +4,8 @@ import { CHAINID, USDC_ADDRESS } from "../../constants/constants";
 import {
   MANAGEMENT_FEE,
   PERFORMANCE_FEE,
-  BORROWER,
+  BORROWERS,
+  BORROWER_WEIGHTS,
   OPTION_SELLER,
   LOAN_TERM_LENGTH,
   OPTION_PURCHASE_FREQ,
@@ -52,7 +53,8 @@ const main = async ({
     {
       _owner: owner,
       _keeper: keeper,
-      _borrower: BORROWER.GENESIS,
+      _borrowers: [BORROWERS.GENESIS],
+      _borrowerWeights: [BORROWER_WEIGHTS[BORROWERS.GENESIS]],
       _optionSeller: OPTION_SELLER.ORBIT,
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
