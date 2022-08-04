@@ -33,8 +33,10 @@ moment.tz.setDefault("UTC");
 const gasPrice = parseUnits("30", "gwei");
 const FEE_SCALING = BigNumber.from(10).pow(6);
 
-const WEEKS_PER_YEAR = 52142857;
 const SECONDS_PER_DAY = 86400;
+const SCALED_SECONDS_PER_YEAR = BigNumber.from(SECONDS_PER_DAY * 365).mul(
+  FEE_SCALING
+);
 
 const chainId = network.config.chainId;
 
@@ -428,7 +430,10 @@ function behavesLikeRibbonOptionsVault(params: {
 
         assert.equal(
           (await vault.managementFee()).toString(),
-          managementFee.mul(FEE_SCALING).div(WEEKS_PER_YEAR).toString()
+          managementFee
+            .mul(FEE_SCALING)
+            .div(SCALED_SECONDS_PER_YEAR.div(loanTermLength))
+            .toString()
         );
         assert.equal(
           (await vault.performanceFee()).toString(),
@@ -859,7 +864,10 @@ function behavesLikeRibbonOptionsVault(params: {
       it("returns the management fee", async function () {
         assert.equal(
           (await vault.managementFee()).toString(),
-          managementFee.mul(FEE_SCALING).div(WEEKS_PER_YEAR).toString()
+          managementFee
+            .mul(FEE_SCALING)
+            .div(SCALED_SECONDS_PER_YEAR.div(loanTermLength))
+            .toString()
         );
       });
     });
@@ -1137,11 +1145,20 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("set new loan term length", async function () {
         assert.equal((await vault.allocationState()).nextLoanTermLength, 0);
+        let mgmtFeeBefore = await vault.managementFee();
         let tx = await vault.connect(ownerSigner).setLoanTermLength(86400);
+        let mgmtFeeAfter = await vault.managementFee();
         assert.equal((await vault.allocationState()).nextLoanTermLength, 86400);
         assert.equal(
           (await vault.allocationState()).currentLoanTermLength,
           loanTermLength
+        );
+        assert.equal(
+          mgmtFeeAfter.toString(),
+          mgmtFeeBefore
+            .mul(86400)
+            .div((await vault.allocationState()).currentLoanTermLength)
+            .toString()
         );
 
         await expect(tx)
@@ -1154,6 +1171,10 @@ function behavesLikeRibbonOptionsVault(params: {
               await vault.allocationState()
             ).nextLoanTermLength
           );
+
+        await expect(tx)
+          .to.emit(vault, "ManagementFeeSet")
+          .withArgs(mgmtFeeBefore, mgmtFeeAfter);
       });
     });
 
@@ -1265,7 +1286,7 @@ function behavesLikeRibbonOptionsVault(params: {
           (await vault.managementFee()).toString(),
           BigNumber.from(1000000)
             .mul(FEE_SCALING)
-            .div(WEEKS_PER_YEAR)
+            .div(SCALED_SECONDS_PER_YEAR.div(loanTermLength))
             .toString()
         );
       });
@@ -2588,17 +2609,9 @@ function behavesLikeRibbonOptionsVault(params: {
 
         const totalBalanceAfterFee = await vault.totalBalance();
 
-        // To take into account imprecision with transfers to borrowers with weights
-        // Do range
-
-        assert.bnGt(
-          secondInitialTotalBalance.sub(totalBalanceAfterFee),
-          vaultFees.mul(999).div(1000)
-        );
-
-        assert.bnLt(
-          secondInitialTotalBalance.sub(totalBalanceAfterFee),
-          vaultFees
+        assert.equal(
+          secondInitialTotalBalance.sub(totalBalanceAfterFee).toString(),
+          vaultFees.toString()
         );
 
         for (let i = 0; i < borrowers.length; i++) {
@@ -2616,14 +2629,9 @@ function behavesLikeRibbonOptionsVault(params: {
             );
         }
 
-        assert.bnLt(
-          await assetContract.balanceOf(vault.address),
-          (await vault.allocationState()).optionAllocation.mul(1001).div(1000)
-        );
-
-        assert.bnGt(
-          await assetContract.balanceOf(vault.address),
-          (await vault.allocationState()).optionAllocation
+        assert.equal(
+          (await assetContract.balanceOf(vault.address)).toString(),
+          (await vault.allocationState()).optionAllocation.toString()
         );
       });
 
