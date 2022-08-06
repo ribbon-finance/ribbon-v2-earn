@@ -344,7 +344,7 @@ contract RibbonEarnVault is
      */
     function commitOptionSeller() external onlyOwner {
         require(
-            lastOptionSellerChange > 0 &&
+            pendingOptionSeller != address(0) &&
                 block.timestamp >= (lastOptionSellerChange + 3 days),
             "R10"
         );
