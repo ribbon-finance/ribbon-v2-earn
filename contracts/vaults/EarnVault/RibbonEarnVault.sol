@@ -77,6 +77,7 @@ import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
  * R48: current loan term length must be >= 1 day
  * R49: current option purchase freq must be < loan term length
  * R50: loan pct + option pct == total PCT
+ * R51: invalid pending option seller
  */
 
 /**
@@ -343,11 +344,9 @@ contract RibbonEarnVault is
      * @notice Commits the option seller
      */
     function commitOptionSeller() external onlyOwner {
-        require(
-            pendingOptionSeller != address(0) &&
-                block.timestamp >= (lastOptionSellerChange + 3 days),
-            "R10"
-        );
+        require(pendingOptionSeller != address(0), "R51");
+
+        require(block.timestamp >= (lastOptionSellerChange + 3 days), "R10");
         optionSeller = pendingOptionSeller;
         pendingOptionSeller = address(0);
     }
