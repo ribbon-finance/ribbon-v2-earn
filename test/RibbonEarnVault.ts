@@ -1066,7 +1066,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await time.increase(86400 * 3 + 1);
         await expect(
           vault.connect(ownerSigner).commitOptionSeller()
-        ).to.be.revertedWith("R10");
+        ).to.be.revertedWith("R51");
       });
 
       it("reverts when not waiting 72 hours for commit borrower", async function () {
