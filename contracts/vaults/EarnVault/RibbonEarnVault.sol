@@ -689,9 +689,6 @@ contract RibbonEarnVault is
 
         _burn(address(this), withdrawalShares);
 
-        require(withdrawAmount > 0, "R28");
-        transferAsset(msg.sender, withdrawAmount);
-
         return withdrawAmount;
     }
 
@@ -794,9 +791,12 @@ contract RibbonEarnVault is
      */
     function completeWithdraw() external nonReentrant {
         uint256 withdrawAmount = _completeWithdraw();
+
+        require(withdrawAmount > 0, "R28");
         lastQueuedWithdrawAmount = uint128(
             uint256(lastQueuedWithdrawAmount) - withdrawAmount
         );
+        transferAsset(msg.sender, withdrawAmount);
     }
 
     /************************************************
