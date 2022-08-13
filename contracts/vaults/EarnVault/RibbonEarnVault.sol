@@ -254,6 +254,7 @@ contract RibbonEarnVault is
             (_initParams._managementFee * Vault.FEE_MULTIPLIER) /
             ((365 days * Vault.FEE_MULTIPLIER) /
                 _allocationState.currentLoanTermLength);
+        nextManagementFee = managementFee;
         vaultParams = _vaultParams;
         allocationState = _allocationState;
 
@@ -426,11 +427,10 @@ contract RibbonEarnVault is
 
         allocationState.nextLoanTermLength = _loanTermLength;
         uint256 currentLoanTermLength = allocationState.currentLoanTermLength;
-        uint256 tmpManagementFee =
-            (managementFee * _loanTermLength) / currentLoanTermLength;
+        nextManagementFee =
+            (managementFee * _loanTermLength) /
+            currentLoanTermLength;
         emit NewLoanTermLength(currentLoanTermLength, _loanTermLength);
-        emit ManagementFeeSet(managementFee, tmpManagementFee);
-        managementFee = tmpManagementFee;
     }
 
     /**
@@ -1095,6 +1095,11 @@ contract RibbonEarnVault is
 
         _updateAllocationState(lockedBalance);
         _commitBorrowerBasket();
+
+        if (managementFee != nextManagementFee) {
+            emit ManagementFeeSet(managementFee, nextManagementFee);
+            managementFee = nextManagementFee;
+        }
 
         return (lockedBalance, queuedWithdrawAmount);
     }

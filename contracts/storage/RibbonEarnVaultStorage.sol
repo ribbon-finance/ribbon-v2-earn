@@ -58,6 +58,9 @@ abstract contract RibbonEarnVaultStorageV1 {
     /// @notice Management fee charged on entire AUM in rollToNextRound. Only charged when there is no loss.
     uint256 public managementFee;
 
+    /// @notice Next management fee to replace current management fee after the round
+    uint256 public nextManagementFee;
+
     /// @notice Amount locked for scheduled withdrawals last week;
     uint256 public lastQueuedWithdrawAmount;
 
