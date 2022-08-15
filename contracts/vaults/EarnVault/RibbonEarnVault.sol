@@ -254,7 +254,6 @@ contract RibbonEarnVault is
             (_initParams._managementFee * Vault.FEE_MULTIPLIER) /
             ((365 days * Vault.FEE_MULTIPLIER) /
                 _allocationState.currentLoanTermLength);
-        nextManagementFee = managementFee;
         vaultParams = _vaultParams;
         allocationState = _allocationState;
 
@@ -426,11 +425,10 @@ contract RibbonEarnVault is
         require(_loanTermLength >= 1 days, "R15");
 
         allocationState.nextLoanTermLength = _loanTermLength;
-        uint256 currentLoanTermLength = allocationState.currentLoanTermLength;
-        nextManagementFee =
-            (managementFee * _loanTermLength) /
-            currentLoanTermLength;
-        emit NewLoanTermLength(currentLoanTermLength, _loanTermLength);
+        emit NewLoanTermLength(
+            allocationState.currentLoanTermLength,
+            _loanTermLength
+        );
     }
 
     /**
@@ -1096,11 +1094,6 @@ contract RibbonEarnVault is
         _updateAllocationState(lockedBalance);
         _commitBorrowerBasket();
 
-        if (managementFee != nextManagementFee) {
-            emit ManagementFeeSet(managementFee, nextManagementFee);
-            managementFee = nextManagementFee;
-        }
-
         return (lockedBalance, queuedWithdrawAmount);
     }
 
@@ -1157,9 +1150,16 @@ contract RibbonEarnVault is
 
         // Set next loan term length
         if (_allocationState.nextLoanTermLength != 0) {
+            uint256 tmpManagementFee = managementFee;
+            managementFee =
+                (tmpManagementFee * _allocationState.nextLoanTermLength) /
+                _allocationState.currentLoanTermLength;
+
             allocationState.currentLoanTermLength = _allocationState
                 .nextLoanTermLength;
             allocationState.nextLoanTermLength = 0;
+
+            emit ManagementFeeSet(tmpManagementFee, managementFee);
         }
 
         // Set next option purchase frequency
