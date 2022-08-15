@@ -1159,18 +1159,12 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.equal((await vault.allocationState()).nextLoanTermLength, 0);
         let mgmtFeeBefore = await vault.managementFee();
         let tx = await vault.connect(ownerSigner).setLoanTermLength(86400);
-        let nextMgmtFee = await vault.nextManagementFee();
+        let currentLoanTermLength = (await vault.allocationState())
+          .currentLoanTermLength;
         assert.equal((await vault.allocationState()).nextLoanTermLength, 86400);
         assert.equal(
           (await vault.allocationState()).currentLoanTermLength,
           loanTermLength
-        );
-        assert.equal(
-          nextMgmtFee.toString(),
-          mgmtFeeBefore
-            .mul(86400)
-            .div((await vault.allocationState()).currentLoanTermLength)
-            .toString()
         );
 
         await expect(tx)
@@ -1188,7 +1182,10 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let mgmtFeeAfter = await vault.managementFee();
 
-        assert.equal(mgmtFeeAfter.toString(), nextMgmtFee.toString());
+        assert.equal(
+          mgmtFeeAfter.toString(),
+          mgmtFeeBefore.mul(86400).div(currentLoanTermLength).toString()
+        );
 
         await expect(tx2)
           .to.emit(vault, "ManagementFeeSet")
