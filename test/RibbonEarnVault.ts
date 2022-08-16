@@ -778,7 +778,7 @@ function behavesLikeRibbonOptionsVault(params: {
         ).to.be.revertedWith("R49");
       });
 
-      it("reverts when total allocation is not equal to 100%", async function () {
+      it("reverts when total allocation is not <= 100%", async function () {
         await expect(
           testVault.initialize(
             [
@@ -804,7 +804,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
               loanTermLength,
               optionPurchaseFreq,
-              0,
+              loanAllocationPCT.mul(2),
               optionAllocationPCT,
               0,
               0,
