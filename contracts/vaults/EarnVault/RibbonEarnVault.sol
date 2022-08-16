@@ -237,7 +237,8 @@ contract RibbonEarnVault is
             _initParams._tokenName,
             _initParams._tokenSymbol,
             _vaultParams,
-            _allocationState
+            _allocationState,
+            TOTAL_PCT
         );
 
         __ReentrancyGuard_init();
