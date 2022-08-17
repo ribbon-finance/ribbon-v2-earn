@@ -9,7 +9,6 @@ import {
   WETH_ADDRESS,
   USDC_ADDRESS,
   STETH_ADDRESS,
-  RETH_ADDRESS,
   USDC_OWNER_ADDRESS,
   BORROWERS,
   BORROWER_WEIGHTS,
@@ -440,7 +439,6 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.equal(await decimals, tokenDecimals);
         assert.equal(decimals, tokenDecimals);
         assert.equal(assetFromContract, collateralAsset);
-        assert.equal(await vault.WETH(), WETH_ADDRESS[chainId]);
         assert.equal(await vault.USDC(), USDC_ADDRESS[chainId]);
         assert.bnEqual(await vault.totalPending(), BigNumber.from(0));
         assert.equal(minimumSupply, params.minimumSupply);
@@ -780,7 +778,7 @@ function behavesLikeRibbonOptionsVault(params: {
         ).to.be.revertedWith("R49");
       });
 
-      it("reverts when total allocation is not equal to 100%", async function () {
+      it("reverts when total allocation is not <= 100%", async function () {
         await expect(
           testVault.initialize(
             [
@@ -806,7 +804,7 @@ function behavesLikeRibbonOptionsVault(params: {
               0,
               loanTermLength,
               optionPurchaseFreq,
-              0,
+              loanAllocationPCT.mul(2),
               optionAllocationPCT,
               0,
               0,
@@ -1070,52 +1068,68 @@ function behavesLikeRibbonOptionsVault(params: {
       });
     });
 
-    describe("#setLoanAllocationPCT", () => {
+    describe("#setAllocationPCT", () => {
       time.revertToSnapshotAfterTest();
 
       it("reverts when not owner call", async function () {
-        await expect(vault.setLoanAllocationPCT(1)).to.be.revertedWith(
+        await expect(vault.setAllocationPCT(1, 1)).to.be.revertedWith(
           "caller is not the owner"
         );
       });
 
-      it("reverts when loanAllocationPCT > TOTAL_PCT", async function () {
+      it("reverts when loanAllocationPCT + optionAllocationPCT > TOTAL_PCT", async function () {
         await expect(
           vault
             .connect(ownerSigner)
-            .setLoanAllocationPCT(
-              BigNumber.from(await vault.TOTAL_PCT()).add(1)
-            )
+            .setAllocationPCT(BigNumber.from(await vault.TOTAL_PCT()).add(1), 0)
         ).to.be.revertedWith("R14");
       });
 
-      it("set new loan allocation PCT", async function () {
+      it("reverts when loanAllocationPCT + optionAllocationPCTllocation > TOTAL_PCT (2)", async function () {
+        await expect(
+          vault.connect(ownerSigner).setAllocationPCT(
+            BigNumber.from(await vault.TOTAL_PCT())
+              .div(2)
+              .add(1),
+            BigNumber.from(await vault.TOTAL_PCT()).div(2)
+          )
+        ).to.be.revertedWith("R14");
+      });
+
+      it("set new allocation PCT", async function () {
         assert.equal(
           (await vault.allocationState()).loanAllocationPCT,
           loanAllocationPCT
         );
+        assert.equal(
+          (await vault.allocationState()).optionAllocationPCT,
+          optionAllocationPCT
+        );
 
         let tx = await vault
           .connect(ownerSigner)
-          .setLoanAllocationPCT(loanAllocationPCT.div(2));
+          .setAllocationPCT(
+            loanAllocationPCT.div(2),
+            optionAllocationPCT.div(2)
+          );
+
         assert.equal(
           (await vault.allocationState()).loanAllocationPCT,
           loanAllocationPCT.div(2)
         );
+
         assert.equal(
-          (await vault.allocationState()).optionAllocationPCT,
-          BigNumber.from(await vault.TOTAL_PCT()).sub(loanAllocationPCT.div(2))
+          (await vault.allocationState()).optionAllocationPCT.toString(),
+          optionAllocationPCT.div(2).toString()
         );
 
         await expect(tx)
-          .to.emit(vault, "NewLoanOptionAllocationSet")
+          .to.emit(vault, "NewAllocationSet")
           .withArgs(
             loanAllocationPCT,
-            optionAllocationPCT,
             loanAllocationPCT.div(2),
-            BigNumber.from(await vault.TOTAL_PCT()).sub(
-              loanAllocationPCT.div(2)
-            )
+            optionAllocationPCT,
+            optionAllocationPCT.div(2)
           );
       });
     });
@@ -1295,149 +1309,6 @@ function behavesLikeRibbonOptionsVault(params: {
         );
       });
     });
-
-    // Only apply to when assets is WETH
-    if (
-      [WETH_ADDRESS[chainId], RETH_ADDRESS[chainId]].includes(
-        params.collateralAsset
-      )
-    ) {
-      describe("#depositETH", () => {
-        time.revertToSnapshotAfterEach();
-
-        it("creates pending deposit successfully", async function () {
-          const startBalance = await provider.getBalance(user);
-
-          let depositAmount = parseEther("1");
-          const tx = await vault.depositETH({ value: depositAmount, gasPrice });
-          const receipt = await tx.wait();
-          const gasFee = receipt.gasUsed.mul(gasPrice);
-
-          assert.bnEqual(
-            await provider.getBalance(user),
-            startBalance.sub(depositAmount).sub(gasFee)
-          );
-
-          if (params.collateralAsset === RETH_ADDRESS[chainId]) {
-            let rETHAmount = await (
-              await getContractAt("IRETH", params.collateralAsset)
-            ).getRethValue(depositAmount);
-            depositAmount = rETHAmount;
-          }
-
-          // Unchanged for share balance and totalSupply
-          assert.bnEqual(await vault.totalSupply(), BigNumber.from(0));
-          assert.bnEqual(await vault.balanceOf(user), BigNumber.from(0));
-          await expect(tx)
-            .to.emit(vault, "Deposit")
-            .withArgs(user, depositAmount, 1);
-          await expect(tx)
-            .to.emit(vault, "Deposit")
-            .withArgs(user, depositAmount, 1);
-
-          assert.bnEqual(await vault.totalPending(), depositAmount);
-          const { round, amount } = await vault.depositReceipts(user);
-          assert.equal(round, 1);
-          assert.bnEqual(amount, depositAmount);
-        });
-
-        it("fits gas budget [ @skip-on-coverage ]", async function () {
-          const tx1 = await vault
-            .connect(ownerSigner)
-            .depositETH({ value: parseEther("0.1") });
-          const receipt1 = await tx1.wait();
-          assert.isAtMost(
-            receipt1.gasUsed.toNumber(),
-            params.collateralAsset === WETH_ADDRESS[chainId] ? 130000 : 300000
-          );
-
-          const tx2 = await vault.depositETH({ value: parseEther("0.1") });
-          const receipt2 = await tx2.wait();
-          assert.isAtMost(
-            receipt2.gasUsed.toNumber(),
-            params.collateralAsset === WETH_ADDRESS[chainId] ? 91500 : 261500
-          );
-
-          // Uncomment to measure precise gas numbers
-          // console.log("Worst case depositETH", receipt1.gasUsed.toNumber());
-          // console.log("Best case depositETH", receipt2.gasUsed.toNumber());
-        });
-
-        it("reverts when no value passed", async function () {
-          await expect(
-            vault.connect(userSigner).depositETH({ value: 0 })
-          ).to.be.revertedWith("R19");
-        });
-
-        it("does not inflate the share tokens on initialization", async function () {
-          if (params.collateralAsset === WETH_ADDRESS[chainId]) {
-            await assetContract
-              .connect(adminSigner)
-              .deposit({ value: parseEther("10") });
-          }
-
-          await assetContract
-            .connect(adminSigner)
-            .transfer(vault.address, parseEther("10"));
-
-          await vault
-            .connect(userSigner)
-            .depositETH({ value: parseEther("1") });
-
-          assert.isTrue((await vault.balanceOf(user)).isZero());
-        });
-
-        it("reverts when minimum shares are not minted", async function () {
-          await expect(
-            vault.connect(userSigner).depositETH({
-              value: BigNumber.from("10").pow("10").sub(BigNumber.from("1")),
-            })
-          ).to.be.revertedWith("R23");
-        });
-
-        it("ETH deposit works at predefined schedule", async function () {
-          if (params.collateralAsset === RETH_ADDRESS[chainId]) {
-            await vault.depositETH({
-              value: parseEther("1"),
-              gasPrice,
-            });
-
-            await vault.connect(keeperSigner).updaterETHMintCutoff();
-
-            // 2 hour increase
-            await time.increase(7200);
-
-            await expect(
-              vault.depositETH({
-                value: parseEther("1"),
-                gasPrice,
-              })
-            ).to.be.revertedWith("!cutoff");
-
-            await vault.connect(keeperSigner).commitAndClose();
-            await expect(vault.connect(keeperSigner).rollToNextRound()).to.be
-              .reverted;
-
-            // 22 hour increase
-            await time.increase(79200);
-
-            await vault.depositETH({
-              value: parseEther("1"),
-              gasPrice,
-            });
-          }
-        });
-      });
-    } else {
-      describe("#depositETH", () => {
-        it("reverts when asset is not WETH", async function () {
-          const depositAmount = parseEther("1");
-          await expect(
-            vault.depositETH({ value: depositAmount })
-          ).to.be.revertedWith("R18");
-        });
-      });
-    }
 
     // Only apply to when assets is USDC
     if (params.collateralAsset === USDC_ADDRESS[chainId]) {
@@ -2289,10 +2160,12 @@ function behavesLikeRibbonOptionsVault(params: {
             .div(await vault.TOTAL_PCT())
             .toString()
         );
+
         assert.equal(
           (await vault.allocationState()).optionAllocation.toString(),
-          (await vault.vaultState()).lockedAmount
-            .sub((await vault.allocationState()).loanAllocation)
+          BigNumber.from((await vault.allocationState()).optionAllocationPCT)
+            .mul((await vault.vaultState()).lockedAmount)
+            .div(await vault.TOTAL_PCT())
             .toString()
         );
 

@@ -103,9 +103,6 @@ contract RibbonEarnVault is
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
 
-    /// @notice WETH9 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
-    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-
     /// @notice USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
@@ -141,7 +138,7 @@ contract RibbonEarnVault is
 
     event OptionSellerSet(address oldOptionSeller, address newOptionSeller);
 
-    event NewLoanOptionAllocationSet(
+    event NewAllocationSet(
         uint256 oldLoanAllocation,
         uint256 oldOptionAllocation,
         uint256 newLoanAllocation,
@@ -240,7 +237,8 @@ contract RibbonEarnVault is
             _initParams._tokenName,
             _initParams._tokenSymbol,
             _vaultParams,
-            _allocationState
+            _allocationState,
+            TOTAL_PCT
         );
 
         __ReentrancyGuard_init();
@@ -391,27 +389,26 @@ contract RibbonEarnVault is
     }
 
     /**
-     * @notice Sets new loan allocation percentage
+     * @notice Sets new loan and option allocation percentage
      * @dev Can be called by admin
      * @param _loanAllocationPCT new allocation for loan
+     * @param _optionAllocationPCT new allocation for option
      */
-    function setLoanAllocationPCT(uint16 _loanAllocationPCT)
-        external
-        onlyOwner
-    {
-        require(_loanAllocationPCT <= TOTAL_PCT, "R14");
-        uint16 nextOptionAllocationPCT =
-            uint16(uint256(TOTAL_PCT) - _loanAllocationPCT);
+    function setAllocationPCT(
+        uint16 _loanAllocationPCT,
+        uint16 _optionAllocationPCT
+    ) external onlyOwner {
+        require(_loanAllocationPCT + _optionAllocationPCT <= TOTAL_PCT, "R14");
 
-        emit NewLoanOptionAllocationSet(
+        emit NewAllocationSet(
             uint256(allocationState.loanAllocationPCT),
-            uint256(allocationState.optionAllocationPCT),
             uint256(_loanAllocationPCT),
-            uint256(nextOptionAllocationPCT)
+            uint256(allocationState.optionAllocationPCT),
+            uint256(_optionAllocationPCT)
         );
 
         allocationState.loanAllocationPCT = _loanAllocationPCT;
-        allocationState.optionAllocationPCT = nextOptionAllocationPCT;
+        allocationState.optionAllocationPCT = _optionAllocationPCT;
     }
 
     /**
@@ -472,18 +469,6 @@ contract RibbonEarnVault is
     /************************************************
      *  DEPOSIT & WITHDRAWALS
      ***********************************************/
-
-    /**
-     * @notice Deposits ETH into the contract and mint vault shares. Reverts if the asset is not WETH.
-     */
-    function depositETH() external payable nonReentrant {
-        require(vaultParams.asset == WETH, "R18");
-        require(msg.value > 0, "R19");
-
-        _depositFor(msg.value, msg.sender);
-
-        IWETH(WETH).deposit{value: msg.value}();
-    }
 
     /**
      * @notice Deposits the `asset` from msg.sender without an approve
@@ -686,7 +671,7 @@ contract RibbonEarnVault is
         _burn(address(this), withdrawalShares);
 
         require(withdrawAmount > 0, "R28");
-        transferAsset(msg.sender, withdrawAmount);
+        IERC20(vaultParams.asset).safeTransfer(msg.sender, withdrawAmount);
 
         return withdrawAmount;
     }
@@ -773,7 +758,7 @@ contract RibbonEarnVault is
 
         emit InstantWithdraw(msg.sender, amount, currentRound);
 
-        transferAsset(msg.sender, amount);
+        IERC20(vaultParams.asset).safeTransfer(msg.sender, amount);
     }
 
     /**
@@ -1011,22 +996,6 @@ contract RibbonEarnVault is
     }
 
     /**
-     * @notice Helper function to make either an ETH transfer or ERC20 transfer
-     * @param recipient is the receiving address
-     * @param amount is the transfer amount
-     */
-    function transferAsset(address recipient, uint256 amount) internal {
-        address asset = vaultParams.asset;
-        if (asset == WETH) {
-            IWETH(WETH).withdraw(amount);
-            (bool success, ) = recipient.call{value: amount}("");
-            require(success, "R38");
-            return;
-        }
-        IERC20(asset).safeTransfer(recipient, amount);
-    }
-
-    /**
      * @notice Helper function that performs most administrative tasks
      * such as minting new shares, getting vault fees, etc.
      * @param lastQueuedWithdrawAmount is old queued withdraw amount
@@ -1092,7 +1061,7 @@ contract RibbonEarnVault is
         _mint(address(this), mintShares);
 
         if (totalVaultFee > 0) {
-            transferAsset(payable(recipient), totalVaultFee);
+            IERC20(vaultParams.asset).safeTransfer(recipient, totalVaultFee);
         }
 
         _updateAllocationState(lockedBalance);
@@ -1173,8 +1142,8 @@ contract RibbonEarnVault is
 
         // Set next option allocation from vault per purchase in USD
         allocationState.optionAllocation =
-            lockedBalance -
-            allocationState.loanAllocation;
+            (uint256(_allocationState.optionAllocationPCT) * lockedBalance) /
+            TOTAL_PCT;
     }
 
     /**
