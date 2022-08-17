@@ -1115,7 +1115,7 @@ function behavesLikeRibbonOptionsVault(params: {
           )
         ).to.be.revertedWith("R14");
       });
-      
+
       it("set new allocation PCT", async function () {
         assert.equal(
           (await vault.allocationState()).loanAllocationPCT,
