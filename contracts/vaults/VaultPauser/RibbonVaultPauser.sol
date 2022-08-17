@@ -155,10 +155,8 @@ contract RibbonVaultPauser is Ownable, IVaultPauser {
 
         require(_amount < type(uint128).max, "_amount overflow");
 
-        pausedPositions[currentVaultAddress][_account] = PauseReceipt({
-            round: round,
-            shares: uint128(_amount)
-        });
+        pausedPosition.round = round;
+        pausedPosition.shares = uint128(_amount);
 
         emit Pause(_account, currentVaultAddress, _amount, round);
 
