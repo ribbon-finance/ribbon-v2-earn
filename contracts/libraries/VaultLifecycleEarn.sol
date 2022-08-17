@@ -11,8 +11,6 @@ import {SupportsNonCompliantERC20} from "./SupportsNonCompliantERC20.sol";
 library VaultLifecycleEarn {
     using SupportsNonCompliantERC20 for IERC20;
 
-    uint256 internal constant totalPCT = 10000; // Equals 100%
-
     /**
      * @param decimals is the decimals of the asset
      * @param totalBalance is the vaults total balance of the asset
@@ -194,7 +192,8 @@ library VaultLifecycleEarn {
         string calldata tokenName,
         string calldata tokenSymbol,
         Vault.VaultParams calldata _vaultParams,
-        Vault.AllocationState calldata _allocationState
+        Vault.AllocationState calldata _allocationState,
+        uint256 totalPCT
     ) external pure {
         require(keeper != address(0), "R7");
         require(feeRecipient != address(0), "R8");
@@ -221,7 +220,7 @@ library VaultLifecycleEarn {
         );
         require(
             uint256(_allocationState.loanAllocationPCT) +
-                _allocationState.optionAllocationPCT ==
+                _allocationState.optionAllocationPCT <=
                 totalPCT,
             "R50"
         );
