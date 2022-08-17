@@ -77,6 +77,7 @@ import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
  * R48: current loan term length must be >= 1 day
  * R49: current option purchase freq must be < loan term length
  * R50: loan pct + option pct == total PCT
+ * R51: invalid pending option seller
  */
 
 /**
@@ -107,10 +108,6 @@ contract RibbonEarnVault is
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     uint16 public constant TOTAL_PCT = 10000; // Equals 100%
-
-    // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
-    // Dividing by weeks per year requires doing num.mul(FEE_MULTIPLIER).div(WEEKS_PER_YEAR)
-    uint256 private constant WEEKS_PER_YEAR = 52142857;
 
     /************************************************
      *  EVENTS
@@ -253,7 +250,8 @@ contract RibbonEarnVault is
         performanceFee = _initParams._performanceFee;
         managementFee =
             (_initParams._managementFee * Vault.FEE_MULTIPLIER) /
-            WEEKS_PER_YEAR;
+            ((365 days * Vault.FEE_MULTIPLIER) /
+                _allocationState.currentLoanTermLength);
         vaultParams = _vaultParams;
         allocationState = _allocationState;
 
@@ -344,6 +342,8 @@ contract RibbonEarnVault is
      * @notice Commits the option seller
      */
     function commitOptionSeller() external onlyOwner {
+        require(pendingOptionSeller != address(0), "R51");
+
         require(block.timestamp >= (lastOptionSellerChange + 3 days), "R10");
         optionSeller = pendingOptionSeller;
         pendingOptionSeller = address(0);
@@ -356,11 +356,13 @@ contract RibbonEarnVault is
     function setManagementFee(uint256 newManagementFee) external onlyOwner {
         require(newManagementFee < 100 * Vault.FEE_MULTIPLIER, "R11");
 
-        // We are dividing annualized management fee by num weeks in a year
+        // We are dividing annualized management fee by loanTermLength
         uint256 tmpManagementFee =
-            (newManagementFee * Vault.FEE_MULTIPLIER) / WEEKS_PER_YEAR;
+            (newManagementFee * Vault.FEE_MULTIPLIER) /
+                ((365 days * Vault.FEE_MULTIPLIER) /
+                    allocationState.currentLoanTermLength);
 
-        emit ManagementFeeSet(managementFee, newManagementFee);
+        emit ManagementFeeSet(managementFee, tmpManagementFee);
 
         managementFee = tmpManagementFee;
     }
@@ -629,11 +631,11 @@ contract RibbonEarnVault is
         } else {
             require(existingShares == 0, "R25");
             withdrawalShares = numShares;
-            withdrawals[msg.sender].round = uint16(currentRound);
+            withdrawal.round = uint16(currentRound);
         }
 
         ShareMath.assertUint128(withdrawalShares);
-        withdrawals[msg.sender].shares = uint128(withdrawalShares);
+        withdrawal.shares = uint128(withdrawalShares);
 
         _transfer(msg.sender, address(this), numShares);
     }
@@ -654,7 +656,7 @@ contract RibbonEarnVault is
         require(withdrawalRound < vaultState.round, "R27");
 
         // We leave the round number as non-zero to save on gas for subsequent writes
-        withdrawals[msg.sender].shares = 0;
+        withdrawal.shares = 0;
         vaultState.queuedWithdrawShares = uint128(
             uint256(vaultState.queuedWithdrawShares) - withdrawalShares
         );
@@ -669,9 +671,6 @@ contract RibbonEarnVault is
         emit Withdraw(msg.sender, withdrawAmount, withdrawalShares);
 
         _burn(address(this), withdrawalShares);
-
-        require(withdrawAmount > 0, "R28");
-        IERC20(vaultParams.asset).safeTransfer(msg.sender, withdrawAmount);
 
         return withdrawAmount;
     }
@@ -775,9 +774,12 @@ contract RibbonEarnVault is
      */
     function completeWithdraw() external nonReentrant {
         uint256 withdrawAmount = _completeWithdraw();
+
+        require(withdrawAmount > 0, "R28");
         lastQueuedWithdrawAmount = uint128(
             uint256(lastQueuedWithdrawAmount) - withdrawAmount
         );
+        IERC20(vaultParams.asset).safeTransfer(msg.sender, withdrawAmount);
     }
 
     /************************************************
@@ -807,18 +809,14 @@ contract RibbonEarnVault is
     function rollToNextRound() external onlyKeeper nonReentrant {
         vaultState.lastLockedAmount = uint104(vaultState.lockedAmount);
 
-        uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
-
         (uint256 lockedBalance, uint256 queuedWithdrawAmount) =
-            _rollToNextRound(
-                lastQueuedWithdrawAmount,
-                currQueuedWithdrawShares
-            );
+            _rollToNextRound();
 
         lastQueuedWithdrawAmount = queuedWithdrawAmount;
 
         uint256 newQueuedWithdrawShares =
-            uint256(vaultState.queuedWithdrawShares) + currQueuedWithdrawShares;
+            uint256(vaultState.queuedWithdrawShares) +
+                currentQueuedWithdrawShares;
 
         ShareMath.assertUint128(newQueuedWithdrawShares);
         vaultState.queuedWithdrawShares = uint128(newQueuedWithdrawShares);
@@ -998,15 +996,13 @@ contract RibbonEarnVault is
     /**
      * @notice Helper function that performs most administrative tasks
      * such as minting new shares, getting vault fees, etc.
-     * @param lastQueuedWithdrawAmount is old queued withdraw amount
-     * @param currentQueuedWithdrawShares is the queued withdraw shares for the current round
      * @return lockedBalance is the new balance used to calculate next option purchase size or collateral size
      * @return queuedWithdrawAmount is the new queued withdraw amount for this round
      */
-    function _rollToNextRound(
-        uint256 lastQueuedWithdrawAmount,
-        uint256 currentQueuedWithdrawShares
-    ) internal returns (uint256 lockedBalance, uint256 queuedWithdrawAmount) {
+    function _rollToNextRound()
+        internal
+        returns (uint256 lockedBalance, uint256 queuedWithdrawAmount)
+    {
         require(
             block.timestamp >=
                 uint256(vaultState.lastEpochTime) +
@@ -1123,9 +1119,16 @@ contract RibbonEarnVault is
 
         // Set next loan term length
         if (_allocationState.nextLoanTermLength != 0) {
+            uint256 tmpManagementFee = managementFee;
+            managementFee =
+                (tmpManagementFee * _allocationState.nextLoanTermLength) /
+                _allocationState.currentLoanTermLength;
+
             allocationState.currentLoanTermLength = _allocationState
                 .nextLoanTermLength;
             allocationState.nextLoanTermLength = 0;
+
+            emit ManagementFeeSet(tmpManagementFee, managementFee);
         }
 
         // Set next option purchase frequency
