@@ -53,8 +53,8 @@ const main = async ({
     {
       _owner: owner,
       _keeper: keeper,
-      _borrowers: [BORROWERS.GENESIS],
-      _borrowerWeights: [BORROWER_WEIGHTS[BORROWERS.GENESIS]],
+      _borrowers: [BORROWERS.WINTERMUTE],
+      _borrowerWeights: [BORROWER_WEIGHTS[BORROWERS.WINTERMUTE]],
       _optionSeller: OPTION_SELLER.ORBIT,
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
@@ -66,7 +66,7 @@ const main = async ({
       decimals: 6,
       asset: USDC_ADDRESS[chainId],
       minimumSupply: BigNumber.from(10).pow(8),
-      cap: BigNumber.from("1000000").mul(BigNumber.from(10).pow(6)),
+      cap: BigNumber.from("2500000").mul(BigNumber.from(10).pow(6)),
     },
     {
       nextLoanTermLength: 0,

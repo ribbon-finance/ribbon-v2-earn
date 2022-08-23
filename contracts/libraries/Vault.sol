@@ -36,9 +36,9 @@ library Vault {
         // Current Option Purchase Frequency
         uint32 currentOptionPurchaseFreq;
         // Current Loan Allocation Percent
-        uint16 loanAllocationPCT;
+        uint32 loanAllocationPCT;
         // Current Option Purchase Allocation Percent
-        uint16 optionAllocationPCT;
+        uint32 optionAllocationPCT;
         // Loan Allocation in USD
         uint256 loanAllocation;
         // Option Purchase Allocation across all purchases
