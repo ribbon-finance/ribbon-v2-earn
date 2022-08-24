@@ -107,7 +107,7 @@ contract RibbonEarnVault is
     /// @notice USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
-    uint16 public constant TOTAL_PCT = 10000; // Equals 100%
+    uint32 public constant TOTAL_PCT = 1000000; // Equals 100%
 
     /************************************************
      *  EVENTS
@@ -397,8 +397,8 @@ contract RibbonEarnVault is
      * @param _optionAllocationPCT new allocation for option
      */
     function setAllocationPCT(
-        uint16 _loanAllocationPCT,
-        uint16 _optionAllocationPCT
+        uint32 _loanAllocationPCT,
+        uint32 _optionAllocationPCT
     ) external onlyOwner {
         require(_loanAllocationPCT + _optionAllocationPCT <= TOTAL_PCT, "R14");
 
