@@ -53,8 +53,8 @@ const main = async ({
     {
       _owner: owner,
       _keeper: keeper,
-      _borrowers: [BORROWERS.WINTERMUTE],
-      _borrowerWeights: [BORROWER_WEIGHTS[BORROWERS.WINTERMUTE]],
+      _borrowers: [BORROWERS.WINTERMUTE, BORROWERS.FOLKVANG],
+      _borrowerWeights: [BORROWER_WEIGHTS[BORROWERS.WINTERMUTE], BORROWER_WEIGHTS[BORROWERS.FOLKVANG]],
       _optionSeller: OPTION_SELLER.ORBIT,
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
