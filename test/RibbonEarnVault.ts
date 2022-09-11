@@ -2497,14 +2497,9 @@ function behavesLikeRibbonOptionsVault(params: {
 
         const totalBalanceAfterFee = await vault.totalBalance();
 
-        assert.bnLt(
-          secondInitialTotalBalance.sub(totalBalanceAfterFee),
-          vaultFees
-        );
-
-        assert.bnGt(
-          secondInitialTotalBalance.sub(totalBalanceAfterFee),
-          vaultFees.mul(99).div(100)
+        assert.equal(
+          secondInitialTotalBalance.sub(totalBalanceAfterFee).toString(),
+          vaultFees.toString()
         );
 
         for (let i = 0; i < borrowers.length; i++) {
@@ -2524,7 +2519,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         assert.bnLt(
           await assetContract.balanceOf(vault.address),
-          (await vault.allocationState()).optionAllocation.mul(101).div(100)
+          (await vault.allocationState()).optionAllocation.mul(102).div(100)
         );
 
         assert.bnGt(
