@@ -1800,8 +1800,6 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let balBefore = await assetContract.balanceOf(optionSeller);
 
-        let t = await time.now();
-
         // Buy option
         let tx = await vault.connect(keeperSigner).buyOption();
 
