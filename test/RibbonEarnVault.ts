@@ -1800,8 +1800,6 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let balBefore = await assetContract.balanceOf(optionSeller);
 
-        let t = await time.now();
-
         // Buy option
         let tx = await vault.connect(keeperSigner).buyOption();
 
@@ -1827,10 +1825,15 @@ function behavesLikeRibbonOptionsVault(params: {
         // Sends assets to option seller
         assert.bnEqual(balAfter.sub(balBefore), optionAllocation);
 
+        let now = await time.now();
+
         // Updates last purchase time
-        assert.bnEqual(
-          (await vault.vaultState()).lastOptionPurchaseTime,
-          t.add(1)
+        assert.equal(
+          (await vault.vaultState()).lastOptionPurchaseTime.toString(),
+          now
+            .sub(BigNumber.from(parseInt(now.toString()) % 86400))
+            .add(28800)
+            .toString()
         );
 
         await expect(tx)
@@ -2011,7 +2014,7 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.bnEqual(balAfter.sub(balBefore), depositAmount);
       });
 
-      it("adds option yield to vault", async function () {
+      it("adds loan yield to vault", async function () {
         await vault.connect(keeperSigner).rollToNextRound();
 
         let newDepositAmount = depositAmount.div(2);
@@ -2042,6 +2045,8 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let totalToReturn = newDepositAmount.sub(
           (await vault.allocationState()).loanAllocation
+            .mul((await vault.borrowerWeights(borrower)).borrowerWeight)
+            .div(await vault.totalBorrowerWeight())
         );
 
         if (parseInt(totalToReturn.toString()) < 0) {
@@ -2059,7 +2064,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await expect(tx2).to.emit(vault, "CloseLoan").withArgs(1, 0, borrower);
       });
 
-      it("adds option yield to vault pt 2", async function () {
+      it("adds loan yield to vault pt 2", async function () {
         await vault.connect(keeperSigner).rollToNextRound();
 
         await assetContract
@@ -2333,6 +2338,7 @@ function behavesLikeRibbonOptionsVault(params: {
             );
         }
 
+        // By the end - time increase to next round
         await buyAllOptions();
 
         const beforeBalance = await assetContract.balanceOf(vault.address);
@@ -2364,18 +2370,15 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(firstCloseTx)
           .to.emit(vault, "CloseLoan")
-          .withArgs(totalToReturn, interest, borrower);
-
-        // Time increase to next round
-        await time.increaseTo(
-          (
-            await vault.vaultState()
-          ).lastEpochTime.add(
-            (
-              await vault.allocationState()
-            ).currentLoanTermLength
-          )
-        );
+          .withArgs(
+            totalToReturn,
+            totalToReturn.sub(
+              (await vault.allocationState()).loanAllocation
+                .mul((await vault.borrowerWeights(borrower)).borrowerWeight)
+                .div(await vault.totalBorrowerWeight())
+            ),
+            borrower
+          );
 
         await assetContract.balanceOf(vault.address);
 
@@ -2420,6 +2423,7 @@ function behavesLikeRibbonOptionsVault(params: {
             );
         }
 
+        // By the end - time increase to next round
         await buyAllOptions();
 
         const beforeBalance = await assetContract.balanceOf(vault.address);
@@ -2459,18 +2463,15 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await expect(firstCloseTx)
           .to.emit(vault, "CloseLoan")
-          .withArgs(totalToReturn, interest, borrower);
-
-        // Time increase to next round
-        await time.increaseTo(
-          (
-            await vault.vaultState()
-          ).lastEpochTime.add(
-            (
-              await vault.allocationState()
-            ).currentLoanTermLength
-          )
-        );
+          .withArgs(
+            totalToReturn,
+            totalToReturn.sub(
+              (await vault.allocationState()).loanAllocation
+                .mul((await vault.borrowerWeights(borrower)).borrowerWeight)
+                .div(await vault.totalBorrowerWeight())
+            ),
+            borrower
+          );
 
         let pendingAmount = (await vault.vaultState()).totalPending;
         let [secondInitialLockedBalance, queuedWithdrawAmount] =
@@ -2673,19 +2674,9 @@ function behavesLikeRibbonOptionsVault(params: {
         // totalBalance should remain the same before and after roll
         const secondStartBalance = await vault.totalBalance();
 
+        // By the end - time increase to next round
         await buyAllOptions();
         await repayInterest();
-
-        // Time increase to next round
-        await time.increaseTo(
-          (
-            await vault.vaultState()
-          ).lastEpochTime.add(
-            (
-              await vault.allocationState()
-            ).currentLoanTermLength
-          )
-        );
 
         await vault.connect(keeperSigner).rollToNextRound();
 
@@ -3275,21 +3266,12 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("completes the withdrawal", async function () {
-        // await repayInterest();
+        // By the end - time increase to next round
         await buyAllOptions();
         await assetContract
           .connect(userSigner)
           .transfer(vault.address, depositAmount);
 
-        await time.increaseTo(
-          (
-            await vault.vaultState()
-          ).lastEpochTime.add(
-            (
-              await vault.allocationState()
-            ).currentLoanTermLength
-          )
-        );
         await vault.connect(keeperSigner).rollToNextRound();
 
         const pricePerShare = await vault.roundPricePerShare(2);

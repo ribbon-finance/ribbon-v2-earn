@@ -870,7 +870,9 @@ contract RibbonEarnVault is
                     allocationState.currentOptionPurchaseFreq);
 
         vaultState.optionsBoughtInRound += uint128(optionAllocation);
-        vaultState.lastOptionPurchaseTime = uint64(block.timestamp);
+        vaultState.lastOptionPurchaseTime = uint64(
+            block.timestamp - (block.timestamp % (24 hours)) + (8 hours)
+        );
 
         IERC20(vaultParams.asset).safeTransfer(optionSeller, optionAllocation);
 
@@ -1097,7 +1099,11 @@ contract RibbonEarnVault is
             amount
         );
 
-        uint256 loanAllocation = allocationState.loanAllocation;
+        // Amount lent = total USD loan allocation * weight of current borrower / total weight of all borrowers
+        uint256 loanAllocation =
+            (allocationState.loanAllocation *
+                borrowerWeights[msg.sender].borrowerWeight) /
+                totalBorrowerWeight;
 
         vaultState.amtFundsReturned += amount;
 
