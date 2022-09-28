@@ -1067,21 +1067,11 @@ function behavesLikeRibbonOptionsVault(params: {
         ).to.be.revertedWith("R51");
       });
 
-      it("reverts when not waiting 72 hours for commit borrower", async function () {
-        assert.equal(await vault.optionSeller(), optionSeller);
-        await vault.connect(ownerSigner).setOptionSeller(owner);
-
-        await expect(
-          vault.connect(ownerSigner).commitOptionSeller()
-        ).to.be.revertedWith("R10");
-      });
-
       it("set new option seller", async function () {
         await vault.connect(ownerSigner).setOptionSeller(owner);
         assert.equal(await vault.optionSeller(), optionSeller);
         assert.equal(await vault.pendingOptionSeller(), owner);
-        // 72 hours
-        await time.increase(86400 * 3 + 1);
+
         await vault.connect(ownerSigner).commitOptionSeller();
         assert.equal(await vault.optionSeller(), owner);
         assert.equal(await vault.pendingOptionSeller(), constants.AddressZero);
