@@ -775,7 +775,6 @@ contract RibbonEarnVault is
         lastQueuedWithdrawAmount = uint128(
             uint256(lastQueuedWithdrawAmount) - withdrawAmount
         );
-
         IERC20(vaultParams.asset).safeTransfer(msg.sender, withdrawAmount);
     }
 
