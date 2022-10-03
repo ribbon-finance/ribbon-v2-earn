@@ -26,6 +26,7 @@ import {VaultLifecycleEarn} from "../../libraries/VaultLifecycleEarn.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
+import {IRibbonLend} from "../../interfaces/IRibbonLend.sol";
 
 /**
  * Earn Vault Error Codes
@@ -160,10 +161,6 @@ contract RibbonEarnVault is
         uint256 round,
         address indexed feeRecipient
     );
-
-    event OpenLoan(uint256 amount, address indexed borrower);
-
-    event CloseLoan(uint256 amount, uint256 yield, address indexed borrower);
 
     event PurchaseOption(uint256 premium, address indexed seller);
 
@@ -778,6 +775,7 @@ contract RibbonEarnVault is
         lastQueuedWithdrawAmount = uint128(
             uint256(lastQueuedWithdrawAmount) - withdrawAmount
         );
+
         IERC20(vaultParams.asset).safeTransfer(msg.sender, withdrawAmount);
     }
 
@@ -803,7 +801,7 @@ contract RibbonEarnVault is
     }
 
     /**
-     * @notice Rolls the vault's funds into a new short position.
+     * @notice Rolls the vault's funds into a new loan + long option position.
      */
     function rollToNextRound() external onlyKeeper nonReentrant {
         vaultState.lastLockedAmount = uint104(vaultState.lockedAmount);
@@ -826,7 +824,6 @@ contract RibbonEarnVault is
 
         vaultState.lockedAmount = uint104(lockedBalance);
         vaultState.optionsBoughtInRound = 0;
-        vaultState.amtFundsReturned = 0;
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
@@ -837,17 +834,28 @@ contract RibbonEarnVault is
                     borrowerWeights[borrowers[i]].borrowerWeight) /
                     totalBorrowerWeight;
 
-            if (amtToLendToBorrower == 0) {
-                continue;
+            IRibbonLend lendPool = IRibbonLend(borrowers[i]);
+
+            // Current exchange rate is 10-digits decimal
+            uint256 currBorrowerBalance =
+                (lendPool.balanceOf(address(this)) *
+                    lendPool.getCurrentExchangeRate()) / 10**10;
+
+            // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
+            if (currBorrowerBalance > amtToLendToBorrower) {
+                lendPool.redeemCurrency(
+                    currBorrowerBalance - amtToLendToBorrower
+                );
+            } else if (amtToLendToBorrower > currBorrowerBalance) {
+                IERC20(vaultParams.asset).approve(
+                    borrowers[i],
+                    amtToLendToBorrower - currBorrowerBalance
+                );
+                lendPool.provide(
+                    amtToLendToBorrower - currBorrowerBalance,
+                    address(0)
+                );
             }
-
-            // Lend funds to borrower
-            IERC20(vaultParams.asset).safeTransfer(
-                borrowers[i],
-                amtToLendToBorrower
-            );
-
-            emit OpenLoan(amtToLendToBorrower, borrowers[i]);
         }
     }
 
@@ -917,47 +925,6 @@ contract RibbonEarnVault is
     function payOptionYield(uint256 amount) external onlyOptionSeller {
         // Pay option yields to contract
         _payOptionYield(amount);
-    }
-
-    /**
-     * @notice Return lend funds
-     * `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
-     * over the EIP712-formatted function arguments
-     * @param amount is the amount to return (principal + interest)
-     * @param deadline must be a timestamp in the future
-     * @param v is a valid signature
-     * @param r is a valid signature
-     * @param s is a valid signature
-     */
-    function returnLentFunds(
-        uint256 amount,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external onlyBorrower {
-        // Sign for transfer approval
-        IERC20Permit(vaultParams.asset).permit(
-            msg.sender,
-            address(this),
-            amount,
-            deadline,
-            v,
-            r,
-            s
-        );
-
-        // Return lent funds
-        _returnLentFunds(amount);
-    }
-
-    /**
-     * @notice Return lend funds
-     * @param amount is the amount to return (principal + interest)
-     */
-    function returnLentFunds(uint256 amount) external onlyBorrower {
-        // Return lent funds
-        _returnLentFunds(amount);
     }
 
     /**
@@ -1087,28 +1054,6 @@ contract RibbonEarnVault is
         emit PayOptionYield(
             amount,
             amount > optionAllocation ? amount - optionAllocation : 0,
-            msg.sender
-        );
-    }
-
-    function _returnLentFunds(uint256 amount) internal {
-        IERC20(vaultParams.asset).safeTransferFrom(
-            msg.sender,
-            address(this),
-            amount
-        );
-
-        // Amount lent = total USD loan allocation * weight of current borrower / total weight of all borrowers
-        uint256 loanAllocation =
-            (allocationState.loanAllocation *
-                borrowerWeights[msg.sender].borrowerWeight) /
-                totalBorrowerWeight;
-
-        vaultState.amtFundsReturned += amount;
-
-        emit CloseLoan(
-            amount,
-            amount > loanAllocation ? amount - loanAllocation : 0,
             msg.sender
         );
     }
@@ -1292,20 +1237,23 @@ contract RibbonEarnVault is
      * @return total balance of the vault, including the amounts locked in third party protocols
      */
     function totalBalance() public view returns (uint256) {
-        uint256 lockedForLoan = allocationState.loanAllocation;
-
-        uint256 amtPrincipalReturned =
-            vaultState.amtFundsReturned > lockedForLoan
-                ? lockedForLoan
-                : vaultState.amtFundsReturned;
-
         // Does not include funds allocated for options purchases
         // Includes funds set aside in vault that guarantee base yield
-        // We subtract the amount of principal returned to avoid double counting in locked amount / USDC balance
-        return
-            lockedForLoan +
-            IERC20(vaultParams.asset).balanceOf(address(this)) -
-            amtPrincipalReturned;
+
+        uint256 totalBalance =
+            IERC20(vaultParams.asset).balanceOf(address(this));
+
+        for (uint256 i = 0; i < borrowers.length; i++) {
+            IRibbonLend lendPool = IRibbonLend(borrowers[i]);
+
+            // Current exchange rate is 10-digits decimal
+            uint256 currBorrowerBalance =
+                (lendPool.balanceOf(address(this)) *
+                    lendPool.getCurrentExchangeRate()) / 10**10;
+            totalBalance += currBorrowerBalance;
+        }
+
+        return totalBalance;
     }
 
     /**

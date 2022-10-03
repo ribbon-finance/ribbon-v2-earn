@@ -66,8 +66,6 @@ library Vault {
         uint64 lastOptionPurchaseTime;
         // Amount of options bought in current round
         uint128 optionsBoughtInRound;
-        // Amount of funds returned this round
-        uint256 amtFundsReturned;
     }
 
     struct DepositReceipt {
