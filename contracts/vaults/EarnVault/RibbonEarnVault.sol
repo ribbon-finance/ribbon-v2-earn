@@ -835,23 +835,20 @@ contract RibbonEarnVault is
 
             IRibbonLend lendPool = IRibbonLend(borrowers[i]);
 
-            // Current exchange rate is 10-digits decimal
-            uint256 currBorrowerBalance =
-                (lendPool.balanceOf(address(this)) *
-                    lendPool.getCurrentExchangeRate()) / 10**10;
+            uint256 currLendingPoolBalance = _lendingPoolBalance(lendPool);
 
             // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
-            if (currBorrowerBalance > amtToLendToBorrower) {
+            if (currLendingPoolBalance > amtToLendToBorrower) {
                 lendPool.redeemCurrency(
-                    currBorrowerBalance - amtToLendToBorrower
+                    currLendingPoolBalance - amtToLendToBorrower
                 );
-            } else if (amtToLendToBorrower > currBorrowerBalance) {
-                IERC20(vaultParams.asset).approve(
+            } else if (amtToLendToBorrower > currLendingPoolBalance) {
+                IERC20(vaultParams.asset).safeApprove(
                     borrowers[i],
-                    amtToLendToBorrower - currBorrowerBalance
+                    amtToLendToBorrower - currLendingPoolBalance
                 );
                 lendPool.provide(
-                    amtToLendToBorrower - currBorrowerBalance,
+                    amtToLendToBorrower - currLendingPoolBalance,
                     address(0)
                 );
             }
@@ -1160,6 +1157,22 @@ contract RibbonEarnVault is
      ***********************************************/
 
     /**
+     * @notice Returns the Ribbon Earn vault balance in a Ribbon Lend Pool
+     * @param lendPool is the Ribbon Lend pool
+     * @return the amount of `asset` deposited into the lend pool
+     */
+    function _lendingPoolBalance(IRibbonLend lendPool)
+        internal
+        view
+        returns (uint256)
+    {
+        // Current exchange rate is 10-digits decimal
+        return
+            (lendPool.balanceOf(address(this)) *
+                lendPool.getCurrentExchangeRate()) / 10**10;
+    }
+
+    /**
      * @notice Returns the asset balance held on the vault for the account
      * @param account is the address to lookup balance for
      * @return the amount of `asset` custodied by the vault for the user
@@ -1243,13 +1256,7 @@ contract RibbonEarnVault is
             IERC20(vaultParams.asset).balanceOf(address(this));
 
         for (uint256 i = 0; i < borrowers.length; i++) {
-            IRibbonLend lendPool = IRibbonLend(borrowers[i]);
-
-            // Current exchange rate is 10-digits decimal
-            uint256 currBorrowerBalance =
-                (lendPool.balanceOf(address(this)) *
-                    lendPool.getCurrentExchangeRate()) / 10**10;
-            totalBalance += currBorrowerBalance;
+            totalBalance += _lendingPoolBalance(IRibbonLend(borrowers[i]));
         }
 
         return totalBalance;
