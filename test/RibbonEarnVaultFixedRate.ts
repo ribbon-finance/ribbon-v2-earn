@@ -10,7 +10,7 @@ import {
   USDC_ADDRESS,
   STETH_ADDRESS,
   USDC_OWNER_ADDRESS,
-  BORROWERS,
+  BORROWERS_FIXED_RATE,
   BORROWER_WEIGHTS,
   OPTION_SELLER,
 } from "../constants/constants";
@@ -48,7 +48,7 @@ describe("RibbonEarnVaultFixedRate", () => {
     assetContractName:
       chainId === CHAINID.AVAX_MAINNET ? "IBridgeToken" : "IWBTC",
     collateralAsset: USDC_ADDRESS[chainId],
-    borrowers: BORROWERS[chainId],
+    borrowers: BORROWERS_FIXED_RATE[chainId],
     borrowerWeights: BORROWER_WEIGHTS[chainId],
     optionSeller: OPTION_SELLER[chainId],
     tokenDecimals: 6,
@@ -258,7 +258,7 @@ function behavesLikeRibbonOptionsVault(params: {
           {
             forking: {
               jsonRpcUrl: TEST_URI[chainId],
-              blockNumber: 15086230,
+              blockNumber: 15675168,
             },
           },
         ],
