@@ -257,8 +257,7 @@ contract RibbonEarnVault is
             _initParams._borrowerWeights
         );
 
-        uint256 assetBalance =
-            IERC20(vaultParams.asset).balanceOf(address(this));
+        uint256 assetBalance = totalBalance();
         ShareMath.assertUint104(assetBalance);
         vaultState.lastLockedAmount = uint104(assetBalance);
 
@@ -834,7 +833,6 @@ contract RibbonEarnVault is
                     totalBorrowerWeight;
 
             IRibbonLend lendPool = IRibbonLend(borrowers[i]);
-
             uint256 currLendingPoolBalance = _lendingPoolBalance(lendPool);
 
             // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
@@ -849,7 +847,7 @@ contract RibbonEarnVault is
                 );
                 lendPool.provide(
                     amtToLendToBorrower - currLendingPoolBalance,
-                    address(0)
+                    address(this)
                 );
             }
         }
@@ -991,7 +989,7 @@ contract RibbonEarnVault is
                 vaultState,
                 VaultLifecycleEarn.RolloverParams(
                     vaultParams.decimals,
-                    IERC20(vaultParams.asset).balanceOf(address(this)),
+                    totalBalance(),
                     totalSupply(),
                     lastQueuedWithdrawAmount,
                     performanceFee,
@@ -1166,10 +1164,10 @@ contract RibbonEarnVault is
         view
         returns (uint256)
     {
-        // Current exchange rate is 10-digits decimal
+        // Current exchange rate is 18-digits decimal
         return
             (lendPool.balanceOf(address(this)) *
-                lendPool.getCurrentExchangeRate()) / 10**10;
+                lendPool.getCurrentExchangeRate()) / 10**18;
     }
 
     /**
