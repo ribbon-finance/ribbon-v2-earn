@@ -3495,11 +3495,11 @@ function behavesLikeRibbonOptionsVault(params: {
         await rollToNextRound();
         assert.bnLt(
           await vault.accountVaultBalance(user),
-          BigNumber.from(depositAmount).mul(1001, 1000)
+          BigNumber.from(depositAmount).mul(1001).div(1000)
         );
         assert.bnGt(
           await vault.accountVaultBalance(user),
-          BigNumber.from(depositAmount).mul(999, 1000)
+          BigNumber.from(depositAmount).mul(999).div(1000)
         );
 
         await assetContract.connect(userSigner).transfer(owner, depositAmount);
