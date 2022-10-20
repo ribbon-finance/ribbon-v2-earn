@@ -1931,7 +1931,7 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("reverts when calling before round over", async function () {
-        const firstTx = await vault.connect(keeperSigner).rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         // Loan allocation PCT of the vault's balance is allocated to loan
         assert.bnEqual(
@@ -2102,10 +2102,6 @@ function behavesLikeRibbonOptionsVault(params: {
         await vault.connect(keeperSigner).rollToNextRound();
 
         let totalBorrowerWeight = await vault.totalBorrowerWeight();
-        let beforeBorrowerWeight = (
-          await vault.borrowerWeights(await vault.borrowers(0))
-        ).borrowerWeight;
-        let loanAllocation = (await vault.allocationState()).loanAllocation;
 
         await vault
           .connect(ownerSigner)
@@ -2148,7 +2144,7 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("withdraws and roll funds into next option, after bought options expiry ITM", async function () {
-        const firstTx = await vault.connect(keeperSigner).rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         // By the end - time increase to next round
         await buyAllOptions();
@@ -2212,7 +2208,7 @@ function behavesLikeRibbonOptionsVault(params: {
         let lendPool1Balance = await lendPool.balanceOf(vault.address);
         let lendPool2Balance = await lendPool2.balanceOf(vault.address);
 
-        const secondTx = await vault.connect(keeperSigner).rollToNextRound();
+        secondTx = await vault.connect(keeperSigner).rollToNextRound();
 
         let vaultFees = secondInitialLockedBalance
           .add(queuedWithdrawAmount)
@@ -3497,9 +3493,13 @@ function behavesLikeRibbonOptionsVault(params: {
           .approve(vault.address, depositAmount);
         await vault.deposit(depositAmount);
         await rollToNextRound();
-        assert.bnEqual(
+        assert.bnLt(
           await vault.accountVaultBalance(user),
-          BigNumber.from(depositAmount)
+          BigNumber.from(depositAmount).mul(1001, 1000)
+        );
+        assert.bnGt(
+          await vault.accountVaultBalance(user),
+          BigNumber.from(depositAmount).mul(999, 1000)
         );
 
         await assetContract.connect(userSigner).transfer(owner, depositAmount);
