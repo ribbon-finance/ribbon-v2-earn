@@ -2208,7 +2208,7 @@ function behavesLikeRibbonOptionsVault(params: {
         let lendPool1Balance = await lendPool.balanceOf(vault.address);
         let lendPool2Balance = await lendPool2.balanceOf(vault.address);
 
-        secondTx = await vault.connect(keeperSigner).rollToNextRound();
+        await vault.connect(keeperSigner).rollToNextRound();
 
         let vaultFees = secondInitialLockedBalance
           .add(queuedWithdrawAmount)
