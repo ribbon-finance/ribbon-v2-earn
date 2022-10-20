@@ -3508,10 +3508,13 @@ function behavesLikeRibbonOptionsVault(params: {
           .approve(vault.address, depositAmount);
         await vault.connect(ownerSigner).deposit(depositAmount);
 
-        // remain the same after deposit
-        assert.bnEqual(
+        assert.bnLt(
           await vault.accountVaultBalance(user),
-          BigNumber.from(depositAmount)
+          BigNumber.from(depositAmount).mul(1001).div(1000)
+        );
+        assert.bnGt(
+          await vault.accountVaultBalance(user),
+          BigNumber.from(depositAmount).mul(999).div(1000)
         );
 
         await rollToNextRound(true, false);
