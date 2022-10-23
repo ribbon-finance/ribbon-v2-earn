@@ -847,7 +847,7 @@ contract RibbonEarnVault is
                 );
                 lendPool.provide(
                     amtToLendToBorrower - currLendingPoolBalance,
-                    address(this)
+                    address(0)
                 );
             }
         }
