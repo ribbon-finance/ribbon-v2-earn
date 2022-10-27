@@ -62,8 +62,8 @@ describe("RibbonEarnVault", () => {
     ribbonLendInterestEarned: BigNumber.from("69151056"),
     minimumSupply: BigNumber.from("10").pow("3").toString(),
     gasLimits: {
-      depositWorstCase: 363045,
-      depositBestCase: 346549,
+      depositWorstCase: 363157,
+      depositBestCase: 346661,
     },
     mintConfig: {
       amount: parseUnits("10000000", 6),
@@ -1387,7 +1387,7 @@ function behavesLikeRibbonOptionsVault(params: {
             .depositWithPermit(depositAmount, constants.MaxUint256, v, r, s);
 
           const receipt1 = await tx1.wait();
-          assert.isAtMost(receipt1.gasUsed.toNumber(), 390652);
+          assert.isAtMost(receipt1.gasUsed.toNumber(), 390764);
         });
       });
     } else {
@@ -2376,7 +2376,6 @@ function behavesLikeRibbonOptionsVault(params: {
       it("does not debit the user on first deposit", async () => {
         // totalBalance should remain the same before and after roll
         const startBalance = await vault.totalBalance();
-
         await vault.connect(keeperSigner).rollToNextRound();
 
         // Take into account off by one imprecision when calculating earned amount
