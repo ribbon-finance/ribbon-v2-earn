@@ -62,8 +62,8 @@ describe("RibbonEarnVault", () => {
     ribbonLendInterestEarned: BigNumber.from("69151056"),
     minimumSupply: BigNumber.from("10").pow("3").toString(),
     gasLimits: {
-      depositWorstCase: 362977,
-      depositBestCase: 346481,
+      depositWorstCase: 363045,
+      depositBestCase: 346549,
     },
     mintConfig: {
       amount: parseUnits("10000000", 6),
@@ -1387,7 +1387,7 @@ function behavesLikeRibbonOptionsVault(params: {
             .depositWithPermit(depositAmount, constants.MaxUint256, v, r, s);
 
           const receipt1 = await tx1.wait();
-          assert.isAtMost(receipt1.gasUsed.toNumber(), 390584);
+          assert.isAtMost(receipt1.gasUsed.toNumber(), 390652);
         });
       });
     } else {

@@ -1164,10 +1164,17 @@ contract RibbonEarnVault is
         view
         returns (uint256)
     {
+        uint256 lendPoolBalance;
+
+        // Check for Non-RibbonLend Borrowers
+        try lendPool.balanceOf(address(this)) returns (uint256 balance) {
+            lendPoolBalance = balance;
+        } catch {
+            return 0;
+        }
+
         // Current exchange rate is 18-digits decimal
-        return
-            (lendPool.balanceOf(address(this)) *
-                lendPool.getCurrentExchangeRate()) / 10**18;
+        return (lendPoolBalance * lendPool.getCurrentExchangeRate()) / 10**18;
     }
 
     /**
