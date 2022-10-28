@@ -1164,6 +1164,14 @@ contract RibbonEarnVault is
         view
         returns (uint256)
     {
+        // Check for Non-RibbonLend Borrowers
+        if (
+            address(lendPool) == 0xA1614eC01d13E04522ED0b085C7a178ED9E99bc9 ||
+            address(lendPool) == 0x44C8e19Bd59A8EA895fFf60DBB4e762028f2fb71
+        ) {
+            return 0;
+        }
+
         // Current exchange rate is 18-digits decimal
         return
             (lendPool.balanceOf(address(this)) *
