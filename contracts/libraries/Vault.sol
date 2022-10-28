@@ -12,6 +12,9 @@ library Vault {
     // Yield is scaled by 100 (10 ** 2) for PCT.
     uint256 internal constant YIELD_MULTIPLIER = 10**2;
 
+    // First Ribbon Lend Borrower Index
+    uint256 internal constant RIBBON_LEND_BORROWER_INDEX = 2;
+
     // Placeholder uint value to prevent cold writes
     uint256 internal constant PLACEHOLDER_UINT = 1;
 

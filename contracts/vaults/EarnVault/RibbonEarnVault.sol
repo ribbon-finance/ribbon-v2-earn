@@ -27,6 +27,7 @@ import {ShareMath} from "../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
 import {IRibbonLend} from "../../interfaces/IRibbonLend.sol";
+import {IRibbonLendFactory} from "../../interfaces/IRibbonLendFactory.sol";
 
 /**
  * Earn Vault Error Codes
@@ -399,8 +400,8 @@ contract RibbonEarnVault is
 
         emit NewAllocationSet(
             uint256(allocationState.loanAllocationPCT),
-            uint256(_loanAllocationPCT),
             uint256(allocationState.optionAllocationPCT),
+            uint256(_loanAllocationPCT),
             uint256(_optionAllocationPCT)
         );
 
@@ -825,7 +826,11 @@ contract RibbonEarnVault is
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
-        for (uint256 i = 0; i < borrowers.length; i++) {
+        for (
+            uint256 i = Vault.RIBBON_LEND_BORROWER_INDEX;
+            i < borrowers.length;
+            i++
+        ) {
             // Amount to lending = total USD loan allocation * weight of current borrower / total weight of all borrowers
             uint256 amtToLendToBorrower =
                 (loanAllocation *
@@ -851,6 +856,9 @@ contract RibbonEarnVault is
                 );
             }
         }
+
+        // Withdraw RBN reward from Ribbon Lend and send to Gauge Minter
+        _withdrawRibbonLendRBNReward();
     }
 
     /**
@@ -1150,6 +1158,33 @@ contract RibbonEarnVault is
         emit CommitBorrowerBasket(totalBorrowerWeight);
     }
 
+    /**
+     * @notice Withdraws the ribbon lend reward and transfers to gauge minter
+     */
+    function _withdrawRibbonLendRBNReward() internal {
+        uint256 ribbonLendBorrowerIndex = Vault.RIBBON_LEND_BORROWER_INDEX;
+        uint256 borrowersLength = borrowers.length;
+
+        address[] memory pools =
+            new address[](borrowersLength - ribbonLendBorrowerIndex);
+
+        for (uint256 i = ribbonLendBorrowerIndex; i < borrowersLength; i++) {
+            pools[i - ribbonLendBorrowerIndex] = borrowers[i];
+        }
+
+        // For every Ribbon Lend pool allocated to, withdraw RBN reward from
+        // ribbon lend factory
+        IRibbonLendFactory(0x312853485a41f76f20A14f927Cd0ea676588936C)
+            .withdrawReward(pools);
+
+        IERC20 RBN = IERC20(0x6123B0049F904d730dB3C36a31167D9d4121fA6B);
+        // Transfer RBN to minter
+        RBN.transfer(
+            0x5B0655F938A72052c46d2e94D206ccB6FF625A3A,
+            RBN.balanceOf(address(this))
+        );
+    }
+
     /************************************************
      *  GETTERS
      ***********************************************/
@@ -1164,14 +1199,6 @@ contract RibbonEarnVault is
         view
         returns (uint256)
     {
-        // Check for Non-RibbonLend Borrowers
-        if (
-            address(lendPool) == 0xA1614eC01d13E04522ED0b085C7a178ED9E99bc9 ||
-            address(lendPool) == 0x44C8e19Bd59A8EA895fFf60DBB4e762028f2fb71
-        ) {
-            return 0;
-        }
-
         // Current exchange rate is 18-digits decimal
         return
             (lendPool.balanceOf(address(this)) *
@@ -1261,7 +1288,11 @@ contract RibbonEarnVault is
         uint256 totalBalance =
             IERC20(vaultParams.asset).balanceOf(address(this));
 
-        for (uint256 i = 0; i < borrowers.length; i++) {
+        for (
+            uint256 i = Vault.RIBBON_LEND_BORROWER_INDEX;
+            i < borrowers.length;
+            i++
+        ) {
             totalBalance += _lendingPoolBalance(IRibbonLend(borrowers[i]));
         }
 
