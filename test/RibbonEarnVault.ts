@@ -4086,6 +4086,12 @@ function behavesLikeRibbonOptionsVault(params: {
     describe("#migrateToRibbonLendBorrowers", () => {
       time.revertToSnapshotAfterEach();
 
+      it("revert if called by non-owner", async function () {
+        await expect(
+          vault.connect(userSigner).migrateToRibbonLendBorrowers()
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+      });
+
       it("removes fixed rate borrowers", async function () {
         await vault
           .connect(ownerSigner)

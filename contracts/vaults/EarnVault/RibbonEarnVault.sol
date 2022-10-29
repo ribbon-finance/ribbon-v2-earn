@@ -80,6 +80,7 @@ import {IRibbonLendFactory} from "../../interfaces/IRibbonLendFactory.sol";
  * R49: current option purchase freq must be < loan term length
  * R50: loan pct + option pct == total PCT
  * R51: invalid pending option seller
+ * R52: migrate called twice
  */
 
 /**
