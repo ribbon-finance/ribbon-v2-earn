@@ -4082,6 +4082,44 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.bnEqual(await position.shares, BigNumber.from(0));
       });
     });
+
+    describe("#migrateToRibbonLendBorrowers", () => {
+      time.revertToSnapshotAfterEach();
+
+      it("removes fixed rate borrowers", async function () {
+        await vault
+          .connect(ownerSigner)
+          .updateBorrowerBasket(
+            [
+              "0xA1614eC01d13E04522ED0b085C7a178ED9E99bc9",
+              "0x44C8e19Bd59A8EA895fFf60DBB4e762028f2fb71",
+            ],
+            [100, 100]
+          );
+
+        let borrowerZeroBefore = await vault.borrowers(0);
+        let borrowerOneBefore = await vault.borrowers(1);
+
+        await vault.connect(ownerSigner).migrateToRibbonLendBorrowers();
+
+        assert.equal(
+          (await vault.borrowerWeights(borrowerZeroBefore)).exists,
+          false
+        );
+        assert.equal(
+          (await vault.borrowerWeights(borrowerOneBefore)).exists,
+          false
+        );
+        assert.equal(
+          await vault.borrowers(0),
+          "0x44C8e19Bd59A8EA895fFf60DBB4e762028f2fb71"
+        );
+        assert.equal(
+          await vault.borrowers(1),
+          "0xA1614eC01d13E04522ED0b085C7a178ED9E99bc9"
+        );
+      });
+    });
   });
 }
 
