@@ -826,11 +826,7 @@ contract RibbonEarnVault is
 
         uint256 loanAllocation = allocationState.loanAllocation;
 
-        for (
-            uint256 i = Vault.RIBBON_LEND_BORROWER_INDEX;
-            i < borrowers.length;
-            i++
-        ) {
+        for (uint256 i = 0; i < borrowers.length; i++) {
             // Amount to lending = total USD loan allocation * weight of current borrower / total weight of all borrowers
             uint256 amtToLendToBorrower =
                 (loanAllocation *
@@ -1162,14 +1158,12 @@ contract RibbonEarnVault is
      * @notice Withdraws the ribbon lend reward and transfers to gauge minter
      */
     function _withdrawRibbonLendRBNReward() internal {
-        uint256 ribbonLendBorrowerIndex = Vault.RIBBON_LEND_BORROWER_INDEX;
         uint256 borrowersLength = borrowers.length;
 
-        address[] memory pools =
-            new address[](borrowersLength - ribbonLendBorrowerIndex);
+        address[] memory pools = new address[](borrowersLength);
 
-        for (uint256 i = ribbonLendBorrowerIndex; i < borrowersLength; i++) {
-            pools[i - ribbonLendBorrowerIndex] = borrowers[i];
+        for (uint256 i = 0; i < borrowersLength; i++) {
+            pools[i] = borrowers[i];
         }
 
         // For every Ribbon Lend pool allocated to, withdraw RBN reward from
@@ -1183,6 +1177,14 @@ contract RibbonEarnVault is
             0x5B0655F938A72052c46d2e94D206ccB6FF625A3A,
             RBN.balanceOf(address(this))
         );
+    }
+
+    function migrateToRibbonLendBorrowers() external onlyOwner {
+        for (uint256 i = 0; i < 2; i++) {
+            delete borrowerWeights[borrowers[i]];
+            borrowers[i] = borrowers[borrowers.length - 1];
+            borrowers.pop();
+        }
     }
 
     /************************************************
@@ -1288,11 +1290,7 @@ contract RibbonEarnVault is
         uint256 totalBalance =
             IERC20(vaultParams.asset).balanceOf(address(this));
 
-        for (
-            uint256 i = Vault.RIBBON_LEND_BORROWER_INDEX;
-            i < borrowers.length;
-            i++
-        ) {
+        for (uint256 i = 0; i < borrowers.length; i++) {
             totalBalance += _lendingPoolBalance(IRibbonLend(borrowers[i]));
         }
 

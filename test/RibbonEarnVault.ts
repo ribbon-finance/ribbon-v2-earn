@@ -16,7 +16,6 @@ import {
   BORROWER_WEIGHTS,
   OPTION_SELLER,
   RIBBON_MINTER,
-  RIBBON_LEND_BORROWER_INDEX,
   RIBBON_LEND_FACTORY,
   RIBBON_LEND_KEEPER,
 } from "../constants/constants";
@@ -165,7 +164,7 @@ function behavesLikeRibbonOptionsVault(params: {
   let asset = params.asset;
   let collateralAsset = params.collateralAsset;
   let borrowers = params.borrowers;
-  let borrower = borrowers[RIBBON_LEND_BORROWER_INDEX];
+  let borrower = borrowers[0];
   let borrowerWeights = params.borrowerWeights;
   let optionSeller = params.optionSeller;
   let depositAmount = params.depositAmount;
@@ -402,13 +401,8 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.equal(await vault.owner(), owner);
         assert.equal(await vault.keeper(), keeper);
         assert.equal(await vault.feeRecipient(), feeRecipient);
-        assert.equal(await vault.borrowers(0), borrowers[0]);
+        assert.equal(await vault.borrowers(0), borrower);
         assert.equal(await vault.borrowers(1), borrowers[1]);
-        assert.equal(
-          await vault.borrowers(RIBBON_LEND_BORROWER_INDEX),
-          borrower
-        );
-        assert.equal(await vault.borrowers(3), borrowers[3]);
 
         assert.equal(
           (await vault.borrowerWeights(await vault.borrowers(0)))
@@ -419,16 +413,6 @@ function behavesLikeRibbonOptionsVault(params: {
           (await vault.borrowerWeights(await vault.borrowers(1)))
             .pendingBorrowerWeight,
           borrowerWeights[1]
-        );
-        assert.equal(
-          (await vault.borrowerWeights(await vault.borrowers(2)))
-            .pendingBorrowerWeight,
-          borrowerWeights[3]
-        );
-        assert.equal(
-          (await vault.borrowerWeights(await vault.borrowers(3)))
-            .pendingBorrowerWeight,
-          borrowerWeights[3]
         );
         assert.equal(await vault.lastBorrowerBasketChange(), 0);
         assert.equal(await vault.optionSeller(), optionSeller);
@@ -954,7 +938,7 @@ function behavesLikeRibbonOptionsVault(params: {
         let tx = await vault
           .connect(ownerSigner)
           .updateBorrowerBasket([ownerSigner.address], [100]);
-        assert.equal(await vault.borrowers(4), ownerSigner.address);
+        assert.equal(await vault.borrowers(2), ownerSigner.address);
         assert.equal(
           (await vault.borrowerWeights(ownerSigner.address)).exists,
           true
@@ -992,7 +976,7 @@ function behavesLikeRibbonOptionsVault(params: {
             [100, 100]
           );
 
-        assert.equal(await vault.borrowers(4), ownerSigner.address);
+        assert.equal(await vault.borrowers(2), ownerSigner.address);
         assert.equal(
           (await vault.borrowerWeights(ownerSigner.address)).exists,
           true
@@ -1007,7 +991,7 @@ function behavesLikeRibbonOptionsVault(params: {
           100
         );
 
-        assert.equal(await vault.borrowers(5), userSigner.address);
+        assert.equal(await vault.borrowers(3), userSigner.address);
         assert.equal(
           (await vault.borrowerWeights(userSigner.address)).exists,
           true
@@ -2126,7 +2110,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await vault
           .connect(ownerSigner)
-          .updateBorrowerBasket([borrowers[RIBBON_LEND_BORROWER_INDEX]], [0]);
+          .updateBorrowerBasket([borrowers[0]], [0]);
 
         // Time increase to next round
         await time.increaseTo(
@@ -2139,13 +2123,8 @@ function behavesLikeRibbonOptionsVault(params: {
           )
         );
 
-        let balBefore = await assetContract.balanceOf(
-          borrowers[RIBBON_LEND_BORROWER_INDEX]
-        );
-        let lendPool = await getContractAt(
-          "IRibbonLend",
-          borrowers[RIBBON_LEND_BORROWER_INDEX]
-        );
+        let balBefore = await assetContract.balanceOf(borrowers[0]);
+        let lendPool = await getContractAt("IRibbonLend", borrowers[0]);
 
         let amountToWithdraw = (await lendPool.balanceOf(vault.address))
           .sub(1)
@@ -2155,12 +2134,10 @@ function behavesLikeRibbonOptionsVault(params: {
         await vault.connect(keeperSigner).rollToNextRound();
 
         let totalBorrowerWeight2 = await vault.totalBorrowerWeight();
-        let balAfter = await assetContract.balanceOf(
-          borrowers[RIBBON_LEND_BORROWER_INDEX]
-        );
+        let balAfter = await assetContract.balanceOf(borrowers[0]);
         assert.equal(
           totalBorrowerWeight.sub(totalBorrowerWeight2).toString(),
-          borrowerWeights[RIBBON_LEND_BORROWER_INDEX].toString()
+          borrowerWeights[0].toString()
         );
 
         // Range to account for imprecisions with exchange rate multiplication
@@ -2206,7 +2183,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await ribbonLendFactory
           .connect(factoryKeeperSigner)
           .setPoolRewardPerSecond(
-            borrowers[RIBBON_LEND_BORROWER_INDEX],
+            borrowers[0],
             BigNumber.from("1").mul(BigNumber.from("10").pow(15))
           );
 
@@ -2225,12 +2202,6 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let minterRBNBalanceBefore = await rbn.balanceOf(RIBBON_MINTER);
 
-        console.log(
-          (
-            await rbn.balanceOf("0x312853485a41f76f20A14f927Cd0ea676588936C")
-          ).toString()
-        );
-
         await vault.connect(keeperSigner).rollToNextRound();
 
         let minterRBNBalanceAfter = await rbn.balanceOf(RIBBON_MINTER);
@@ -2245,14 +2216,8 @@ function behavesLikeRibbonOptionsVault(params: {
         await buyAllOptions();
 
         // Interest Earned on Ribbon Lend
-        let lendPool = await getContractAt(
-          "IRibbonLend",
-          borrowers[RIBBON_LEND_BORROWER_INDEX]
-        );
-        let lendPool2 = await getContractAt(
-          "IRibbonLend",
-          borrowers[RIBBON_LEND_BORROWER_INDEX + 1]
-        );
+        let lendPool = await getContractAt("IRibbonLend", borrowers[0]);
+        let lendPool2 = await getContractAt("IRibbonLend", borrowers[1]);
 
         let usdcBalLendPool1Before = (await lendPool.balanceOf(vault.address))
           .mul(await lendPool.getCurrentExchangeRate())
@@ -2508,7 +2473,7 @@ function behavesLikeRibbonOptionsVault(params: {
         const tx = await vault.connect(keeperSigner).rollToNextRound();
         const receipt = await tx.wait();
 
-        assert.isAtMost(receipt.gasUsed.toNumber(), 1049413);
+        assert.isAtMost(receipt.gasUsed.toNumber(), 1034605);
       });
     });
 
