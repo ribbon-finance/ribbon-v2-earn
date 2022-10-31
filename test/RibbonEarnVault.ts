@@ -10,9 +10,14 @@ import {
   USDC_ADDRESS,
   STETH_ADDRESS,
   USDC_OWNER_ADDRESS,
+  RBN_ADDRESS,
+  RBN_OWNER_ADDRESS,
   BORROWERS,
   BORROWER_WEIGHTS,
   OPTION_SELLER,
+  RIBBON_MINTER,
+  RIBBON_LEND_FACTORY,
+  RIBBON_LEND_KEEPER,
 } from "../constants/constants";
 import {
   deployProxy,
@@ -1122,8 +1127,8 @@ function behavesLikeRibbonOptionsVault(params: {
           .to.emit(vault, "NewAllocationSet")
           .withArgs(
             loanAllocationPCT,
-            loanAllocationPCT.div(2),
             optionAllocationPCT,
+            loanAllocationPCT.div(2),
             optionAllocationPCT.div(2)
           );
       });
@@ -2143,6 +2148,67 @@ function behavesLikeRibbonOptionsVault(params: {
         );
       });
 
+      it("withdraws RBN reward from ribbon lend", async function () {
+        let rbn = await getContractAt("IERC20", RBN_ADDRESS);
+        let ribbonLendFactory = await getContractAt(
+          "IRibbonLendFactory",
+          RIBBON_LEND_FACTORY
+        );
+
+        const rbnSigner = await ethers.provider.getSigner(RBN_OWNER_ADDRESS);
+
+        await network.provider.request({
+          method: "hardhat_impersonateAccount",
+          params: [RBN_OWNER_ADDRESS],
+        });
+
+        const factoryKeeperSigner = await ethers.provider.getSigner(
+          RIBBON_LEND_KEEPER
+        );
+
+        await network.provider.request({
+          method: "hardhat_impersonateAccount",
+          params: [RIBBON_LEND_KEEPER],
+        });
+
+        // Transfer RBN to lend factory
+        await rbn
+          .connect(rbnSigner)
+          .transfer(
+            ribbonLendFactory.address,
+            BigNumber.from("1000000").mul(BigNumber.from("10").pow(18))
+          );
+
+        // Set Pool Reward
+        await ribbonLendFactory
+          .connect(factoryKeeperSigner)
+          .setPoolRewardPerSecond(
+            borrowers[0],
+            BigNumber.from("1").mul(BigNumber.from("10").pow(15))
+          );
+
+        await vault.connect(keeperSigner).rollToNextRound();
+
+        // Time increase to next round
+        await time.increaseTo(
+          (
+            await vault.vaultState()
+          ).lastEpochTime.add(
+            (
+              await vault.allocationState()
+            ).currentLoanTermLength
+          )
+        );
+
+        let minterRBNBalanceBefore = await rbn.balanceOf(RIBBON_MINTER);
+
+        await vault.connect(keeperSigner).rollToNextRound();
+
+        let minterRBNBalanceAfter = await rbn.balanceOf(RIBBON_MINTER);
+
+        assert.bnGt(minterRBNBalanceAfter, minterRBNBalanceBefore);
+      });
+
       it("withdraws and roll funds into next option, after bought options expiry ITM", async function () {
         await vault.connect(keeperSigner).rollToNextRound();
 
@@ -2407,7 +2473,7 @@ function behavesLikeRibbonOptionsVault(params: {
         const tx = await vault.connect(keeperSigner).rollToNextRound();
         const receipt = await tx.wait();
 
-        assert.isAtMost(receipt.gasUsed.toNumber(), 1018000);
+        assert.isAtMost(receipt.gasUsed.toNumber(), 1034605);
       });
     });
 
@@ -4014,6 +4080,50 @@ function behavesLikeRibbonOptionsVault(params: {
         let position = await pauser.getPausePosition(vault.address, user);
         assert.equal(await position.round, 0);
         assert.bnEqual(await position.shares, BigNumber.from(0));
+      });
+    });
+
+    describe("#migrateToRibbonLendBorrowers", () => {
+      time.revertToSnapshotAfterEach();
+
+      it("revert if called by non-owner", async function () {
+        await expect(
+          vault.connect(userSigner).migrateToRibbonLendBorrowers()
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+      });
+
+      it("removes fixed rate borrowers", async function () {
+        await vault
+          .connect(ownerSigner)
+          .updateBorrowerBasket(
+            [
+              "0xA1614eC01d13E04522ED0b085C7a178ED9E99bc9",
+              "0x44C8e19Bd59A8EA895fFf60DBB4e762028f2fb71",
+            ],
+            [100, 100]
+          );
+
+        let borrowerZeroBefore = await vault.borrowers(0);
+        let borrowerOneBefore = await vault.borrowers(1);
+
+        await vault.connect(ownerSigner).migrateToRibbonLendBorrowers();
+
+        assert.equal(
+          (await vault.borrowerWeights(borrowerZeroBefore)).exists,
+          false
+        );
+        assert.equal(
+          (await vault.borrowerWeights(borrowerOneBefore)).exists,
+          false
+        );
+        assert.equal(
+          await vault.borrowers(0),
+          "0x44C8e19Bd59A8EA895fFf60DBB4e762028f2fb71"
+        );
+        assert.equal(
+          await vault.borrowers(1),
+          "0xA1614eC01d13E04522ED0b085C7a178ED9E99bc9"
+        );
       });
     });
   });
