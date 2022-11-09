@@ -12,11 +12,10 @@ const main = async ({
   getNamedAccounts,
 }: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
-  const { deployer, keeper } = await getNamedAccounts();
+  const { deployer } = await getNamedAccounts();
   console.log(`05 - Deploying stETH Deposit Helper on ${network.name}`);
 
   const chainId = network.config.chainId;
-  const networkName = NETWORK_NAMES[chainId];
 
   const stethEarnVault = await deployments.get("RibbonEarnVaultSTETH");
 
