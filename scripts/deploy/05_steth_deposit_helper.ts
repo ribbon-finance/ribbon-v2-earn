@@ -22,7 +22,7 @@ const main = async ({
   const constructorArguments = [
     STETH_ETH_CRV_POOL,
     stethEarnVault.address,
-    STETH_ADDRESS,
+    STETH_ADDRESS[chainId],
   ];
 
   const stETHDepositHelper = await deploy("RibbonEarnVaultFixedRateLogic", {
