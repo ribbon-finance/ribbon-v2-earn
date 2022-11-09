@@ -1301,7 +1301,7 @@ contract RibbonEarnVaultFixedRate is
 
         // Does not include funds allocated for options purchases
         // Includes funds set aside in vault that guarantee base yield
-        // We subtract the amount of principal returned to avoid double counting in locked amount / USDC balance
+        // We subtract the amount of principal returned to avoid double counting in locked amount / asset balance
         return
             lockedForLoan +
             IERC20(vaultParams.asset).balanceOf(address(this)) -
