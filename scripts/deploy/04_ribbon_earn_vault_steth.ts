@@ -1,11 +1,9 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { CHAINID, USDC_ADDRESS } from "../../constants/constants";
+import { CHAINID, STETH_ADDRESS } from "../../constants/constants";
 import {
   MANAGEMENT_FEE,
   PERFORMANCE_FEE,
-  BORROWERS,
-  BORROWER_WEIGHTS,
   OPTION_SELLER,
   LOAN_TERM_LENGTH,
   OPTION_PURCHASE_FREQ,
@@ -14,17 +12,17 @@ import {
 } from "../utils/constants";
 
 const TOKEN_NAME = {
-  [CHAINID.ETH_MAINNET]: "Ribbon USDC Earn Vault",
-  [CHAINID.ETH_KOVAN]: "Ribbon USDC Earn Vault",
-  [CHAINID.AVAX_MAINNET]: "Ribbon USDC Earn Vault",
-  [CHAINID.AVAX_FUJI]: "Ribbon USDC Earn Vault",
+  [CHAINID.ETH_MAINNET]: "Ribbon stETH Earn Vault",
+  [CHAINID.ETH_KOVAN]: "Ribbon stETH Earn Vault",
+  [CHAINID.AVAX_MAINNET]: "Ribbon stETH Earn Vault",
+  [CHAINID.AVAX_FUJI]: "Ribbon stETH Earn Vault",
 };
 
 const TOKEN_SYMBOL = {
-  [CHAINID.ETH_MAINNET]: "rEARN",
-  [CHAINID.ETH_KOVAN]: "rEARN",
-  [CHAINID.AVAX_MAINNET]: "rEARN",
-  [CHAINID.AVAX_FUJI]: "rEARN",
+  [CHAINID.ETH_MAINNET]: "rEARN-stETH",
+  [CHAINID.ETH_KOVAN]: "rEARN-stETH",
+  [CHAINID.AVAX_MAINNET]: "rEARN-stETH",
+  [CHAINID.AVAX_FUJI]: "rEARN-stETH",
 };
 
 const main = async ({
@@ -37,24 +35,29 @@ const main = async ({
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
-  console.log(`02 - Deploying USDC Earn Vault on ${network.name}`);
+  console.log(`04 - Deploying stETH Earn Vault on ${network.name}`);
 
   const chainId = network.config.chainId;
 
   const lifecycle = await deployments.get("VaultLifecycleEarn");
-  const logicDeployment = await deployments.get("RibbonEarnVaultLogic");
-  const RibbonEarnVault = await ethers.getContractFactory("RibbonEarnVault", {
-    libraries: {
-      VaultLifecycleEarn: lifecycle.address,
-    },
-  });
+  const logicDeployment = await deployments.get(
+    "RibbonEarnVaultFixedRateLogic"
+  );
+  const RibbonEarnVault = await ethers.getContractFactory(
+    "RibbonEarnVaultFixedRate",
+    {
+      libraries: {
+        VaultLifecycleEarn: lifecycle.address,
+      },
+    }
+  );
 
   const initArgs = [
     {
       _owner: owner,
       _keeper: keeper,
-      _borrowers: [BORROWERS.WINTERMUTE, BORROWERS.FOLKVANG],
-      _borrowerWeights: [BORROWER_WEIGHTS[BORROWERS.WINTERMUTE], BORROWER_WEIGHTS[BORROWERS.FOLKVANG]],
+      _borrowers: [],
+      _borrowerWeights: [],
       _optionSeller: OPTION_SELLER.ORBIT,
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
@@ -63,18 +66,18 @@ const main = async ({
       _tokenSymbol: TOKEN_SYMBOL[chainId],
     },
     {
-      decimals: 6,
-      asset: USDC_ADDRESS[chainId],
-      minimumSupply: BigNumber.from(10).pow(8),
-      cap: BigNumber.from("2500000").mul(BigNumber.from(10).pow(6)),
+      decimals: 18,
+      asset: STETH_ADDRESS[chainId],
+      minimumSupply: BigNumber.from(10).pow(18),
+      cap: BigNumber.from("2000").mul(BigNumber.from(10).pow(18)),
     },
     {
       nextLoanTermLength: 0,
       nextOptionPurchaseFreq: 0,
-      currentLoanTermLength: LOAN_TERM_LENGTH,
-      currentOptionPurchaseFreq: OPTION_PURCHASE_FREQ,
-      loanAllocationPCT: LOAN_ALLOCATION_PCT,
-      optionAllocationPCT: OPTION_ALLOCATION_PCT,
+      currentLoanTermLength: LOAN_TERM_LENGTH["stETH"],
+      currentOptionPurchaseFreq: OPTION_PURCHASE_FREQ["stETH"],
+      loanAllocationPCT: LOAN_ALLOCATION_PCT["stETH"],
+      optionAllocationPCT: OPTION_ALLOCATION_PCT["stETH"],
       loanAllocation: 0,
       optionAllocation: 0,
     },
@@ -85,13 +88,13 @@ const main = async ({
     initArgs
   );
 
-  const proxy = await deploy("RibbonEarnVaultUSDC", {
+  const proxy = await deploy("RibbonEarnVaultSTETH", {
     contract: "AdminUpgradeabilityProxy",
     from: deployer,
     args: [logicDeployment.address, admin, initData],
   });
 
-  console.log(`RibbonEarnVaultUSDC Proxy @ ${proxy.address}`);
+  console.log(`RibbonEarnVaultSTETH Proxy @ ${proxy.address}`);
 
   try {
     await run("verify:verify", {
@@ -102,7 +105,7 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["RibbonEarnVaultUSDC-T1"];
-main.dependencies = ["RibbonEarnVaultLogic"];
+main.tags = ["RibbonEarnVaultSTETH"];
+main.dependencies = ["RibbonEarnVaultFixedRateLogic"];
 
 export default main;

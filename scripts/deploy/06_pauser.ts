@@ -13,7 +13,7 @@ const main = async ({
 }: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer, keeper } = await getNamedAccounts();
-  console.log(`21 - Deploying Pauser on ${network.name}`);
+  console.log(`06 - Deploying Pauser on ${network.name}`);
 
   const chainId = network.config.chainId;
   const networkName = NETWORK_NAMES[chainId];
