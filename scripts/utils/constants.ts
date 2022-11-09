@@ -3,22 +3,22 @@ const { BigNumber } = ethers;
 
 export const LOAN_TERM_LENGTH = {
   USDC: BigNumber.from("28").mul(86400),
-  stETH: BigNumber.from("7").mul(86400),
+  STETH: BigNumber.from("7").mul(86400),
 };
 
 export const OPTION_PURCHASE_FREQ = {
   USDC: BigNumber.from("7").mul(86400),
-  stETH: BigNumber.from("7").mul(86400),
+  STETH: BigNumber.from("7").mul(86400),
 };
 
 export const LOAN_ALLOCATION_PCT = {
   USDC: BigNumber.from("992765"),
-  stETH: BigNumber.from("0"),
+  STETH: BigNumber.from("0"),
 };
 
 export const OPTION_ALLOCATION_PCT = {
   USDC: BigNumber.from("4222"),
-  stETH: BigNumber.from("4222"),
+  STETH: BigNumber.from("4222"),
 };
 
 export const BORROWERS = {
