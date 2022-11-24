@@ -1,10 +1,6 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import {
-  NETWORK_NAMES,
-  STETH_ADDRESS,
-  STETH_ETH_CRV_POOL,
-} from "../../constants/constants";
+import { STETH_ADDRESS, STETH_ETH_CRV_POOL } from "../../constants/constants";
 
 const main = async ({
   network,
@@ -36,7 +32,11 @@ const main = async ({
   try {
     await run("verify:verify", {
       address: stETHDepositHelper.address,
-      constructorArguments: constructorArguments,
+      constructorArguments: [
+        STETH_ETH_CRV_POOL,
+        stethEarnVault.address,
+        STETH_ADDRESS[chainId],
+      ],
     });
   } catch (error) {
     console.log(error);

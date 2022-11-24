@@ -235,7 +235,7 @@ function behavesLikeRibbonOptionsVault(params: {
     };
 
     const repayInterest = async () => {
-      if (params.collateralAsset == STETH_ADDRESS[chainId]) {
+      if (params.collateralAsset === STETH_ADDRESS[chainId]) {
         await assetContract
           .connect(ownerSigner)
           .transfer(
@@ -1923,7 +1923,7 @@ function behavesLikeRibbonOptionsVault(params: {
       });
 
       it("sign and pay yield", async function () {
-        if (params.collateralAsset == USDC_ADDRESS[chainId]) {
+        if (params.collateralAsset === USDC_ADDRESS[chainId]) {
           let optionSellerWallet: Wallet = await generateWallet(
             assetContract,
             depositAmount,
@@ -1986,7 +1986,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         let balAfter = await assetContract.balanceOf(vault.address);
 
-        if (params.collateralAsset == STETH_ADDRESS[chainId]) {
+        if (params.collateralAsset === STETH_ADDRESS[chainId]) {
           balBefore = balBefore.sub(1);
         }
 
@@ -2023,13 +2023,13 @@ function behavesLikeRibbonOptionsVault(params: {
       });
     });
 
-    if (params.collateralAsset == USDC_ADDRESS[chainId]) {
+    if (params.collateralAsset === USDC_ADDRESS[chainId]) {
       describe("#returnLentFunds", () => {
         const depositAmount = params.depositAmount;
 
         time.revertToSnapshotAfterEach(async function () {
           await depositIntoVault(params.collateralAsset, vault, depositAmount);
-          if (params.collateralAsset == STETH_ADDRESS[chainId]) {
+          if (params.collateralAsset === STETH_ADDRESS[chainId]) {
             await vault
               .connect(ownerSigner)
               .updateBorrowerBasket(borrowers, borrowerWeights);
@@ -2050,7 +2050,7 @@ function behavesLikeRibbonOptionsVault(params: {
         });
 
         it("sign and pay principal + interest", async function () {
-          if (params.collateralAsset == USDC_ADDRESS[chainId]) {
+          if (params.collateralAsset === USDC_ADDRESS[chainId]) {
             let borrowerWallet: Wallet = await generateWallet(
               assetContract,
               depositAmount,
@@ -4179,11 +4179,11 @@ function behavesLikeRibbonOptionsVault(params: {
             await assetContract.balanceOf(userSigner.address)
           ).sub(withdrawnTokens1); // User 1 completes withdraw of 5000 shares
           if (params.collateralAsset === STETH_ADDRESS[chainId]) {
-            assert.bnLt(withdrawAmount, depositAmount); // 5000 tokens
-            assert.bnGt(withdrawAmount, depositAmount.mul(999).div(1000));
+            assert.bnLt(withdrawnTokens1, depositAmount); // 5000 tokens
+            assert.bnGt(withdrawnTokens1, depositAmount.mul(999).div(1000));
           } else {
             // User 1 is expected to receive 5000 tokens when they complete withdraw 5000 shares
-            assert.bnEqual(withdrawAmount, depositAmount); // 5000 tokens
+            assert.bnEqual(withdrawnTokens1, depositAmount); // 5000 tokens
           }
 
           // Vault has ~0.00004545 in tokens leftover

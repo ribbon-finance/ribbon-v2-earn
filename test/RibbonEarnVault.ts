@@ -293,7 +293,7 @@ function behavesLikeRibbonOptionsVault(params: {
       pauser = await PauserFactory.connect(ownerSigner).deploy(
         keeperSigner.address,
         WETH_ADDRESS[chainId],
-        STETH_ADDRESS,
+        STETH_ADDRESS[chainId],
         "0x986aaa537b8cc170761FDAC6aC4fc7F9d8a20A8C"
       );
 
