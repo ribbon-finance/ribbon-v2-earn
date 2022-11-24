@@ -90,6 +90,7 @@
     "dotenv": "^10.0.0",
     "got": "^10.7.0",
     "json-stable-stringify": "^1.0.1",
+    "minimatch": "^5.1.0",
     "moment-timezone": "^0.5.33",
     "simple-git": "^2.45.1"
   },
