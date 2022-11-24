@@ -7,7 +7,7 @@ import {
   RETH_ADDRESS,
   WBTC_ADDRESS,
   SAVAX_ADDRESS,
-  STETH_ADDRESS
+  STETH_ADDRESS,
   SAVAX_PRICER,
 } from "../../constants/constants";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
