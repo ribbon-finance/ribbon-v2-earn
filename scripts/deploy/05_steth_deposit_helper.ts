@@ -21,8 +21,8 @@ const main = async ({
     STETH_ADDRESS[chainId],
   ];
 
-  const stETHDepositHelper = await deploy("RibbonEarnVaultFixedRateLogic", {
-    contract: "RibbonEarnVaultFixedRate",
+  const stETHDepositHelper = await deploy("STETHDepositHelper", {
+    contract: "STETHDepositHelper",
     from: deployer,
     args: constructorArguments,
   });
