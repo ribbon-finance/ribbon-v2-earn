@@ -32,6 +32,7 @@ const main = async ({
   getNamedAccounts,
 }: HardhatRuntimeEnvironment) => {
   const { BigNumber } = ethers;
+  const { parseEther } = ethers.utils;
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
@@ -68,8 +69,8 @@ const main = async ({
     {
       decimals: 18,
       asset: STETH_ADDRESS[chainId],
-      minimumSupply: BigNumber.from(10).pow(18),
-      cap: BigNumber.from("2000").mul(BigNumber.from(10).pow(18)),
+      minimumSupply: BigNumber.from(10).pow(10),
+      cap: parseEther("4000"),
     },
     {
       nextLoanTermLength: 0,
