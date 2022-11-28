@@ -831,6 +831,10 @@ contract RibbonEarnVaultFixedRate is
         uint256 loanAllocation = allocationState.loanAllocation;
 
         for (uint256 i = 0; i < borrowers.length; i++) {
+            if (totalBorrowerWeight == 0) {
+                break;
+            }
+
             // Amount to lending = total USD loan allocation * weight of current borrower / total weight of all borrowers
             uint256 amtToLendToBorrower =
                 (loanAllocation *

@@ -37,7 +37,7 @@ const main = async ({
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
-  console.log(`02 - Deploying USDC Earn Vault on ${network.name}`);
+  console.log(`03 - Deploying USDC Earn Vault on ${network.name}`);
 
   const chainId = network.config.chainId;
 
@@ -54,7 +54,10 @@ const main = async ({
       _owner: owner,
       _keeper: keeper,
       _borrowers: [BORROWERS.WINTERMUTE, BORROWERS.FOLKVANG],
-      _borrowerWeights: [BORROWER_WEIGHTS[BORROWERS.WINTERMUTE], BORROWER_WEIGHTS[BORROWERS.FOLKVANG]],
+      _borrowerWeights: [
+        BORROWER_WEIGHTS[BORROWERS.WINTERMUTE],
+        BORROWER_WEIGHTS[BORROWERS.FOLKVANG],
+      ],
       _optionSeller: OPTION_SELLER.ORBIT,
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
@@ -71,10 +74,10 @@ const main = async ({
     {
       nextLoanTermLength: 0,
       nextOptionPurchaseFreq: 0,
-      currentLoanTermLength: LOAN_TERM_LENGTH,
-      currentOptionPurchaseFreq: OPTION_PURCHASE_FREQ,
-      loanAllocationPCT: LOAN_ALLOCATION_PCT,
-      optionAllocationPCT: OPTION_ALLOCATION_PCT,
+      currentLoanTermLength: LOAN_TERM_LENGTH.USDC,
+      currentOptionPurchaseFreq: OPTION_PURCHASE_FREQ.USDC,
+      loanAllocationPCT: LOAN_ALLOCATION_PCT.USDC,
+      optionAllocationPCT: OPTION_ALLOCATION_PCT.USDC,
       loanAllocation: 0,
       optionAllocation: 0,
     },
@@ -102,7 +105,7 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["RibbonEarnVaultUSDC-T1"];
+main.tags = ["RibbonEarnVaultUSDC"];
 main.dependencies = ["RibbonEarnVaultLogic"];
 
 export default main;

@@ -7,6 +7,7 @@ import {
   RETH_ADDRESS,
   WBTC_ADDRESS,
   SAVAX_ADDRESS,
+  STETH_ADDRESS,
   SAVAX_PRICER,
 } from "../../constants/constants";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
@@ -260,7 +261,8 @@ export async function mintToken(
     contract.address === USDC_ADDRESS[chainId] ||
     contract.address === SAVAX_ADDRESS[chainId] ||
     contract.address === APE_ADDRESS[chainId] ||
-    contract.address === RETH_ADDRESS[chainId]
+    contract.address === RETH_ADDRESS[chainId] ||
+    contract.address === STETH_ADDRESS[chainId]
   ) {
     await contract.connect(tokenOwnerSigner).transfer(recipient, amount);
   } else {
