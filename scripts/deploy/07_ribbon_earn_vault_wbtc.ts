@@ -2,13 +2,7 @@ import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { CHAINID, WBTC_ADDRESS } from "../../constants/constants";
 import {
-  MANAGEMENT_FEE,
-  PERFORMANCE_FEE,
   OPTION_SELLER,
-  LOAN_TERM_LENGTH,
-  OPTION_PURCHASE_FREQ,
-  LOAN_ALLOCATION_PCT,
-  OPTION_ALLOCATION_PCT,
 } from "../utils/constants";
 
 const TOKEN_NAME = {
@@ -42,10 +36,10 @@ const main = async ({
 
   const lifecycle = await deployments.get("VaultLifecycleEarn");
   const logicDeployment = await deployments.get(
-    "RibbonEarnVaultFixedRateLogic"
+    "RibbonEarnVaultFixedRateKeeperPermissionedLogic"
   );
   const RibbonEarnVault = await ethers.getContractFactory(
-    "RibbonEarnVaultFixedRate",
+    "RibbonEarnVaultFixedRateKeeperPermissioned",
     {
       libraries: {
         VaultLifecycleEarn: lifecycle.address,
@@ -61,24 +55,24 @@ const main = async ({
       _borrowerWeights: [],
       _optionSeller: OPTION_SELLER.ORBIT_TWO,
       _feeRecipient: feeRecipient,
-      _managementFee: MANAGEMENT_FEE,
-      _performanceFee: PERFORMANCE_FEE,
+      _managementFee: 0,
+      _performanceFee: 0,
       _tokenName: TOKEN_NAME[chainId],
       _tokenSymbol: TOKEN_SYMBOL[chainId],
     },
     {
       decimals: 8,
       asset: WBTC_ADDRESS[chainId],
-      // minimumSupply: BigNumber.from(10).pow(10),
-      // cap: parseEther("4000"),
+      minimumSupply: 0,
+      cap: BigNumber.from("5000000000"), // 50 wBTC
     },
     {
       nextLoanTermLength: 0,
       nextOptionPurchaseFreq: 0,
-      // currentLoanTermLength: LOAN_TERM_LENGTH.STETH,
-      // currentOptionPurchaseFreq: OPTION_PURCHASE_FREQ.STETH,
-      // loanAllocationPCT: LOAN_ALLOCATION_PCT.STETH,
-      // optionAllocationPCT: OPTION_ALLOCATION_PCT.STETH,
+      currentLoanTermLength: BigNumber.from("30").mul(86400), // 30 days
+      currentOptionPurchaseFreq: BigNumber.from("30").mul(86400), // 30 days
+      loanAllocationPCT: 0,
+      optionAllocationPCT: 1000000, // 100%
       loanAllocation: 0,
       optionAllocation: 0,
     },
@@ -89,7 +83,7 @@ const main = async ({
     initArgs
   );
 
-  const proxy = await deploy("RibbonEarnVaultSTETH", {
+  const proxy = await deploy("RibbonEarnVaultWBTC", {
     contract: "AdminUpgradeabilityProxy",
     from: deployer,
     args: [logicDeployment.address, admin, initData],
@@ -107,6 +101,6 @@ const main = async ({
   }
 };
 main.tags = ["RibbonEarnVaultWBTC"];
-main.dependencies = ["RibbonEarnVaultFixedRateLogic"];
+main.dependencies = ["RibbonEarnVaultFixedRateKeeperPermissionedLogic"];
 
 export default main;
