@@ -60,8 +60,8 @@ const main = async ({
     {
       decimals: 8,
       asset: WBTC_ADDRESS[chainId],
-      minimumSupply: 0,
-      cap: BigNumber.from("5000000000"), // 50 wBTC
+      minimumSupply: BigNumber.from("1").mul(BigNumber.from(10).pow(8)), // 1 wBTC
+      cap: BigNumber.from("50").mul(BigNumber.from(10).pow(8)), // 50 wBTC
     },
     {
       nextLoanTermLength: 0,
@@ -69,7 +69,7 @@ const main = async ({
       currentLoanTermLength: BigNumber.from("30").mul(86400), // 30 days
       currentOptionPurchaseFreq: BigNumber.from("30").mul(86400), // 30 days
       loanAllocationPCT: 0,
-      optionAllocationPCT: 1000000, // 100%
+      optionAllocationPCT: BigNumber.from("1000000"), // 100%
       loanAllocation: 0,
       optionAllocation: 0,
     },
