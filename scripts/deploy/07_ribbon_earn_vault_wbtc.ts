@@ -1,9 +1,7 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { CHAINID, WBTC_ADDRESS } from "../../constants/constants";
-import {
-  OPTION_SELLER,
-} from "../utils/constants";
+import { OPTION_SELLER } from "../utils/constants";
 
 const TOKEN_NAME = {
   [CHAINID.ETH_MAINNET]: "Ribbon wBTC Earn Vault",
@@ -26,7 +24,6 @@ const main = async ({
   getNamedAccounts,
 }: HardhatRuntimeEnvironment) => {
   const { BigNumber } = ethers;
-  const { parseEther } = ethers.utils;
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();

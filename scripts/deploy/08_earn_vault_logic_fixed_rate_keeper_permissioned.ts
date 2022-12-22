@@ -8,7 +8,9 @@ const main = async ({
 }: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
-  console.log(`08 - Deploying Earn Vault Fixed Rate Keeper Permissioned logic on ${network.name}`);
+  console.log(
+    `08 - Deploying Earn Vault Fixed Rate Keeper Permissioned logic on ${network.name}`
+  );
 
   const lifecycle = await deploy("VaultLifecycleEarn", {
     contract: "VaultLifecycleEarn",
@@ -16,15 +18,20 @@ const main = async ({
   });
   console.log(`VaultLifecycleEarn @ ${lifecycle.address}`);
 
-  const vault = await deploy("RibbonEarnVaultFixedRateKeeperPermissionedLogic", {
-    contract: "RibbonEarnVaultFixedRateKeeperPermissioned",
-    from: deployer,
-    args: [],
-    libraries: {
-      VaultLifecycleEarn: lifecycle.address,
-    },
-  });
-  console.log(`RibbonEarnVaultFixedRateKeeperPermissionedLogic @ ${vault.address}`);
+  const vault = await deploy(
+    "RibbonEarnVaultFixedRateKeeperPermissionedLogic",
+    {
+      contract: "RibbonEarnVaultFixedRateKeeperPermissioned",
+      from: deployer,
+      args: [],
+      libraries: {
+        VaultLifecycleEarn: lifecycle.address,
+      },
+    }
+  );
+  console.log(
+    `RibbonEarnVaultFixedRateKeeperPermissionedLogic @ ${vault.address}`
+  );
 
   try {
     await run("verify:verify", {
