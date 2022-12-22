@@ -322,7 +322,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
     function updateBorrowerBasket(
         address[] calldata borrowers,
         uint128[] calldata borrowerWeights
-    ) external onlyOwner {
+    ) external onlyKeeper {
         _updateBorrowerBasket(borrowers, borrowerWeights);
         lastBorrowerBasketChange = block.timestamp;
     }
@@ -331,7 +331,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
      * @notice Sets the new option seller
      * @param newOptionSeller is the address of the new option seller
      */
-    function setOptionSeller(address newOptionSeller) external onlyOwner {
+    function setOptionSeller(address newOptionSeller) external onlyKeeper {
         require(newOptionSeller != address(0), "R9");
         emit OptionSellerSet(optionSeller, newOptionSeller);
         pendingOptionSeller = newOptionSeller;
@@ -341,7 +341,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
     /**
      * @notice Commits the option seller
      */
-    function commitOptionSeller() external onlyOwner {
+    function commitOptionSeller() external onlyKeeper {
         require(pendingOptionSeller != address(0), "R51");
 
         optionSeller = pendingOptionSeller;
@@ -352,7 +352,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
      * @notice Sets the management fee for the vault
      * @param newManagementFee is the management fee (6 decimals). ex: 2 * 10 ** 6 = 2%
      */
-    function setManagementFee(uint256 newManagementFee) external onlyOwner {
+    function setManagementFee(uint256 newManagementFee) external onlyKeeper {
         require(newManagementFee < 100 * Vault.FEE_MULTIPLIER, "R11");
 
         // We are dividing annualized management fee by loanTermLength
@@ -370,7 +370,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
      * @notice Sets the performance fee for the vault
      * @param newPerformanceFee is the performance fee (6 decimals). ex: 20 * 10 ** 6 = 20%
      */
-    function setPerformanceFee(uint256 newPerformanceFee) external onlyOwner {
+    function setPerformanceFee(uint256 newPerformanceFee) external onlyKeeper {
         require(newPerformanceFee < 100 * Vault.FEE_MULTIPLIER, "R12");
 
         emit PerformanceFeeSet(performanceFee, newPerformanceFee);
@@ -382,7 +382,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
      * @notice Sets a new cap for deposits
      * @param newCap is the new cap for deposits
      */
-    function setCap(uint256 newCap) external onlyOwner {
+    function setCap(uint256 newCap) external onlyKeeper {
         require(newCap > 0, "R13");
         ShareMath.assertUint104(newCap);
         emit CapSet(vaultParams.cap, newCap);
@@ -398,7 +398,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
     function setAllocationPCT(
         uint32 _loanAllocationPCT,
         uint32 _optionAllocationPCT
-    ) external onlyOwner {
+    ) external onlyKeeper {
         require(_loanAllocationPCT + _optionAllocationPCT <= TOTAL_PCT, "R14");
 
         emit NewAllocationSet(
@@ -417,7 +417,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
      * @dev Can be called by admin
      * @param _loanTermLength new loan term length
      */
-    function setLoanTermLength(uint32 _loanTermLength) external onlyOwner {
+    function setLoanTermLength(uint32 _loanTermLength) external onlyKeeper {
         require(_loanTermLength >= 1 days, "R15");
 
         allocationState.nextLoanTermLength = _loanTermLength;
@@ -434,7 +434,7 @@ contract RibbonEarnVaultFixedRateKeeperPermissioned is
      */
     function setOptionPurchaseFrequency(uint32 _optionPurchaseFreq)
         external
-        onlyOwner
+        onlyKeeper
     {
         require(_optionPurchaseFreq > 0, "R16");
 
