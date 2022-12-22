@@ -51,6 +51,6 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["RibbonEarnVaultFixedRateLogic"];
+main.tags = ["RibbonEarnVaultFixedRateKeeperPermissionedLogic"];
 
 export default main;
