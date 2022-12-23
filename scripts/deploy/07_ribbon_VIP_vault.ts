@@ -4,17 +4,17 @@ import { CHAINID, WBTC_ADDRESS } from "../../constants/constants";
 import { OPTION_SELLER } from "../utils/constants";
 
 const TOKEN_NAME = {
-  [CHAINID.ETH_MAINNET]: "Ribbon wBTC Earn Vault",
-  [CHAINID.ETH_KOVAN]: "Ribbon wBTC Earn Vault",
-  [CHAINID.AVAX_MAINNET]: "Ribbon wBTC Earn Vault",
-  [CHAINID.AVAX_FUJI]: "Ribbon wBTC Earn Vault",
+  [CHAINID.ETH_MAINNET]: "Ribbon VIP wBTC Vault",
+  [CHAINID.ETH_KOVAN]: "Ribbon VIP wBTC Vault",
+  [CHAINID.AVAX_MAINNET]: "Ribbon VIP wBTC Vault",
+  [CHAINID.AVAX_FUJI]: "Ribbon VIP wBTC Vault",
 };
 
 const TOKEN_SYMBOL = {
-  [CHAINID.ETH_MAINNET]: "rEARN-wBTC",
-  [CHAINID.ETH_KOVAN]: "rEARN-wBTC",
-  [CHAINID.AVAX_MAINNET]: "rEARN-wBTC",
-  [CHAINID.AVAX_FUJI]: "rEARN-wBTC",
+  [CHAINID.ETH_MAINNET]: "rVIP-wBTC",
+  [CHAINID.ETH_KOVAN]: "rVIP-wBTC",
+  [CHAINID.AVAX_MAINNET]: "rVIP-wBTC",
+  [CHAINID.AVAX_FUJI]: "rVIP-wBTC",
 };
 
 const main = async ({
@@ -27,7 +27,7 @@ const main = async ({
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
-  console.log(`07 - Deploying wBTC Earn Vault on ${network.name}`);
+  console.log(`07 - Deploying VIP wBTC Vault on ${network.name}`);
 
   const chainId = network.config.chainId;
 
@@ -60,7 +60,7 @@ const main = async ({
     {
       decimals: 8,
       asset: WBTC_ADDRESS[chainId],
-      minimumSupply: BigNumber.from("1").mul(BigNumber.from(10).pow(8)), // 1 wBTC
+      minimumSupply: BigNumber.from("1").mul(BigNumber.from(10).pow(5)), // 0.001 wBTC. Always choose small amount of asset so can test, and non-zero
       cap: BigNumber.from("50").mul(BigNumber.from(10).pow(8)), // 50 wBTC
     },
     {
@@ -80,13 +80,13 @@ const main = async ({
     initArgs
   );
 
-  const proxy = await deploy("RibbonEarnVaultWBTC", {
+  const proxy = await deploy("RibbonVIPVaultWBTC", {
     contract: "AdminUpgradeabilityProxy",
     from: deployer,
     args: [logicDeployment.address, admin, initData],
   });
 
-  console.log(`RibbonEarnVaultWBTC Proxy @ ${proxy.address}`);
+  console.log(`RibbonVIPVaultWBTC Proxy @ ${proxy.address}`);
 
   try {
     await run("verify:verify", {
@@ -97,7 +97,7 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["RibbonEarnVaultWBTC"];
+main.tags = ["RibbonVIPVaultWBTC"];
 main.dependencies = ["RibbonEarnVaultFixedRateKeeperPermissionedLogic"];
 
 export default main;
