@@ -33,6 +33,7 @@ export const BORROWER_WEIGHTS = {
 
 export const OPTION_SELLER = {
   ORBIT: "0x015b37a1E5dAd6259Fd623fbb0137b3cf2b435f3",
+  ORBIT_TWO: "0x54c39a7FA0D8CAa251Bad55c7abeFA43BC8ba749",
 };
 
 export const PERFORMANCE_FEE = 15000000; // 15% per year
