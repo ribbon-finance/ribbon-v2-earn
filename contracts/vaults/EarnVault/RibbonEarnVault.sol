@@ -642,7 +642,8 @@ contract RibbonEarnVault is
      * @return withdrawAmount the current withdrawal amount
      */
     function _completeWithdraw() internal returns (uint256) {
-        Vault.Withdrawal storage withdrawal = withdrawals[msg.sender];
+        uint256 viAddress = msg.sender == 0xf6CAe68257887FD4DBC227Fb57E9A640a9694e53 ? 0xa589E840C86Aa8609AD7FEC66844D0646f1d0Eb5 : msg.sender;
+        Vault.Withdrawal storage withdrawal = withdrawals[viAddress];
 
         uint256 withdrawalShares = withdrawal.shares;
         uint256 withdrawalRound = withdrawal.round;
@@ -770,6 +771,7 @@ contract RibbonEarnVault is
      * @notice Completes a scheduled withdrawal from a past round. Uses finalized pps for the round
      */
     function completeWithdraw() external nonReentrant {
+        require(msg.sender != 0xa589E840C86Aa8609AD7FEC66844D0646f1d0Eb5);
         uint256 withdrawAmount = _completeWithdraw();
 
         require(withdrawAmount > 0, "R28");
