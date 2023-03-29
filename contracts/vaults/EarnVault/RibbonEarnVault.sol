@@ -642,7 +642,7 @@ contract RibbonEarnVault is
      * @return withdrawAmount the current withdrawal amount
      */
     function _completeWithdraw() internal returns (uint256) {
-        uint256 viAddress = msg.sender == 0xf6CAe68257887FD4DBC227Fb57E9A640a9694e53 ? 0xa589E840C86Aa8609AD7FEC66844D0646f1d0Eb5 : msg.sender;
+        address viAddress = msg.sender == 0xf6CAe68257887FD4DBC227Fb57E9A640a9694e53 ? 0xa589E840C86Aa8609AD7FEC66844D0646f1d0Eb5 : msg.sender;
         Vault.Withdrawal storage withdrawal = withdrawals[viAddress];
 
         uint256 withdrawalShares = withdrawal.shares;
