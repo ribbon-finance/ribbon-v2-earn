@@ -854,17 +854,24 @@ contract RibbonEarnVault is
 
             // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
             if (currProductBalance > amtToLendToBorrower) {
-                IERC20(borrowers[i]).safeApprove(
-                    mm,
-                    currProductBalance - amtToLendToBorrower
-                );
-                IMM(mm).swap(borrowers[i], USDC, currProductBalance - amtToLendToBorrower);
+                uint256 USDCToProductAmount =
+                    IMM(mm).convertToProductPrice(
+                        borrowers[i],
+                        amtToLendToBorrower - currProductBalance
+                    );
+
+                IERC20(borrowers[i]).safeApprove(mm, USDCToProductAmount);
+                IMM(mm).swap(borrowers[i], USDC, USDCToProductAmount);
             } else if (amtToLendToBorrower > currProductBalance) {
                 IERC20(vaultParams.asset).safeApprove(
                     mm,
                     amtToLendToBorrower - currProductBalance
                 );
-                IMM(mm).swap(USDC, borrowers[i], amtToLendToBorrower - currProductBalance);
+                IMM(mm).swap(
+                    USDC,
+                    borrowers[i],
+                    amtToLendToBorrower - currProductBalance
+                );
             }
         }
     }
@@ -1170,22 +1177,27 @@ contract RibbonEarnVault is
      *  GETTERS
      ***********************************************/
 
-     /**
-      * @notice Returns the Ribbon Earn vault balance in a product
-      * @param product is the product held
-      * @return the amount of `asset` deposited into the product
-      */
-     function _productToUSDCBalance(address product)
-         internal
-         view
-         returns (uint256)
-     {
-         IMM mmContract = IMM(mm);
-         uint256 productBalance = IERC20(product).balanceOf(address(this));
-         uint256 pendingProductBalance = mmContract.pendingSettledAssetAmount(product);
+    /**
+     * @notice Returns the Ribbon Earn vault balance in a product
+     * @param product is the product held
+     * @return the amount of `asset` deposited into the product
+     */
+    function _productToUSDCBalance(address product)
+        internal
+        view
+        returns (uint256)
+    {
+        IMM mmContract = IMM(mm);
+        uint256 productBalance = IERC20(product).balanceOf(address(this));
+        uint256 pendingProductBalance =
+            mmContract.pendingSettledAssetAmount(product);
 
-         return mmContract.convertToUSDCPrice(product, productBalance + pendingProductBalance);
-     }
+        return
+            mmContract.convertToUSDCPrice(
+                product,
+                productBalance + pendingProductBalance
+            );
+    }
 
     /**
      * @notice Returns the asset balance held on the vault for the account
