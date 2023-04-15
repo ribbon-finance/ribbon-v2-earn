@@ -164,9 +164,12 @@ contract MM is Ownable, IMM {
             asset.transfer(owner(), (_amount * mmSpread) / TOTAL_PCT);
         }
 
+        // Provider charges spread
         uint256 amountAfterProviderSpread =
             (amountIn * (TOTAL_PCT - products[product].providerSpread)) /
                 TOTAL_PCT;
+
+        // Convert to swapped asset
         uint256 amountOut =
             _toAsset == USDC
                 ? convertToUSDCPrice(product, amountAfterProviderSpread)
@@ -186,6 +189,8 @@ contract MM is Ownable, IMM {
         uint256 amtToClaim = IERC20(_asset).balanceOf(address(this));
         IERC20(_asset).transfer(RIBBON_EARN_USDC_VAULT, amtToClaim);
         uint256 _pendingSettledAssetAmount = pendingSettledAssetAmount[_asset];
+        // If more of asset in contract than pending, set to 0.
+        // Otherwise set to amount in contract
         pendingSettledAssetAmount[_asset] -= (amtToClaim >
             _pendingSettledAssetAmount)
             ? _pendingSettledAssetAmount
