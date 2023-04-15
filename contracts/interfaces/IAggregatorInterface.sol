@@ -38,8 +38,5 @@ interface IAggregatorInterface {
             uint80 answeredInRound
         );
 
-    function latestAnswer()
-        external
-        view
-        returns (int256 answer);
+    function latestAnswer() external view returns (int256 answer);
 }

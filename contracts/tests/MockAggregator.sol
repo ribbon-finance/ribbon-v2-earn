@@ -10,7 +10,11 @@ contract MockAggregator {
         price = _price;
     }
 
-    function latestAnswer() external view returns (int256){
-      return price;
+    function latestAnswer() external view returns (int256) {
+        return price;
+    }
+
+    function setAnswer(int256 _answer) external {
+        price = _answer;
     }
 }
