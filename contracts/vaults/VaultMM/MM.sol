@@ -4,6 +4,8 @@
 pragma solidity =0.8.4;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -45,7 +47,9 @@ contract MM is Ownable {
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
 
-    uint256 public constant TOTAL_PCT = 1000000; // Equals 100%
+    uint8 private constant USDC_DECIMALS = 6;
+    uint256 private constant TOTAL_PCT = 1000000; // Equals 100%
+
     uint256 public constant ORACLE_DIFF_THRESH_PCT = 100000; // Equals 10%
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     // Ribbon EARN USDC vault
@@ -85,11 +89,16 @@ contract MM is Ownable {
     {
         IAggregatorInterface oracle =
             IAggregatorInterface(products[_product].oracle);
-        uint256 decimals = oracle.decimals();
+        uint256 oracleDecimals = oracle.decimals();
         uint256 latestAnswer =
-            _latestAnswer(uint256(oracle.latestAnswer()), decimals);
+            _latestAnswer(uint256(oracle.latestAnswer()), oracleDecimals);
 
-        return (_amount * latestAnswer) / 10**decimals;
+        uint256 productDecimals = ERC20(_product).decimals();
+
+        // Shift to USDC amount + shift decimals
+        return
+            (_amount * latestAnswer) /
+            (10**oracleDecimals * 10**(productDecimals - USDC_DECIMALS));
     }
 
     /**
@@ -105,11 +114,17 @@ contract MM is Ownable {
         IAggregatorInterface oracle =
             IAggregatorInterface(products[_product].oracle);
 
-        uint256 decimals = oracle.decimals();
+        uint256 oracleDecimals = oracle.decimals();
         uint256 latestAnswer =
-            _latestAnswer(uint256(oracle.latestAnswer()), decimals);
+            _latestAnswer(uint256(oracle.latestAnswer()), oracleDecimals);
 
-        return (_amount * 10**decimals) / latestAnswer;
+        uint256 productDecimals = ERC20(_product).decimals();
+
+        // Shift to product amount + shift decimals
+        return
+            (_amount *
+                10**oracleDecimals *
+                10**(productDecimals - USDC_DECIMALS)) / latestAnswer;
     }
 
     /**
