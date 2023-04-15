@@ -178,10 +178,11 @@ contract MM is Ownable {
 
         address product = _fromAsset == USDC ? _toAsset : _fromAsset;
 
-        // Either selling product or is whitelisted
+        // Require product whitelisted
+        require(products[product].isWhitelisted, "!whitelisted");
         require(
-            _toAsset == USDC || products[product].isWhitelisted,
-            "!whitelisted"
+            _amount >= products[product].minProviderSwap,
+            "_amount <= minProviderSwap"
         );
 
         uint32 mmSpread = products[product].mmSpread;
@@ -190,7 +191,7 @@ contract MM is Ownable {
         IERC20 asset = IERC20(_fromAsset);
 
         // Transfer to MM
-        asset.transferFrom(RIBBON_EARN_USDC_VAULT, address(this), _amount);
+        asset.safeTransferFrom(RIBBON_EARN_USDC_VAULT, address(this), _amount);
         // Transfer to product sweeper
         asset.transfer(
             _fromAsset == USDC
