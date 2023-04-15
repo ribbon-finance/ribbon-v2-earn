@@ -1155,39 +1155,6 @@ contract RibbonEarnVault is
         emit CommitBorrowerBasket(totalBorrowerWeight);
     }
 
-    /**
-     * @notice Withdraws the ribbon lend reward and transfers to gauge minter
-     */
-    function _withdrawRibbonLendRBNReward() internal {
-        uint256 borrowersLength = borrowers.length;
-
-        address[] memory pools = new address[](borrowersLength);
-
-        for (uint256 i = 0; i < borrowersLength; i++) {
-            pools[i] = borrowers[i];
-        }
-
-        // For every Ribbon Lend pool allocated to, withdraw RBN reward from
-        // ribbon lend factory
-        IRibbonLendFactory(0x312853485a41f76f20A14f927Cd0ea676588936C)
-            .withdrawReward(pools);
-
-        IERC20 RBN = IERC20(0x6123B0049F904d730dB3C36a31167D9d4121fA6B);
-        // Transfer RBN to minter
-        RBN.transfer(
-            0x5B0655F938A72052c46d2e94D206ccB6FF625A3A,
-            RBN.balanceOf(address(this))
-        );
-    }
-
-    function migrateToRibbonLendBorrowers() external onlyOwner {
-        for (uint256 i = 0; i < 2; i++) {
-            delete borrowerWeights[borrowers[i]];
-            borrowers[i] = borrowers[borrowers.length - 1];
-            borrowers.pop();
-        }
-    }
-
     /************************************************
      *  GETTERS
      ***********************************************/
