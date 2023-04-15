@@ -852,7 +852,7 @@ contract RibbonEarnVault is
 
             IMM iMM = IMM(mm);
             (,,uint256 minSwapAmount,,,,) = iMM.products(borrowers[i]);
-            uint256 productBalance = _productToUSDCBalance(iMM, borrowers[i]);
+            uint256 productBalance = _productToUSDCBalance(borrowers[i]);
 
             // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
             if (productBalance > amtToLendToBorrower + minSwapAmount) {
@@ -1181,21 +1181,22 @@ contract RibbonEarnVault is
 
     /**
      * @notice Returns the Ribbon Earn vault balance in a product
-     * @param iMM is the mm
      * @param product is the product held
      * @return the amount of `asset` deposited into the product
      */
-    function _productToUSDCBalance(IMM iMM, address product)
+    function _productToUSDCBalance(address product)
         internal
         view
         returns (uint256)
     {
+        IMM imm = IMM(mm);
         uint256 productBalance = IERC20(product).balanceOf(address(this));
+        // Include pending settled amount due to T+0 lag between issuance/redemption
         uint256 pendingProductBalance =
-            iMM.pendingSettledAssetAmount(product);
+            imm.pendingSettledAssetAmount(product);
 
         return
-            iMM.convertToUSDCPrice(
+            imm.convertToUSDCPrice(
                 product,
                 productBalance + pendingProductBalance
             );
@@ -1285,7 +1286,7 @@ contract RibbonEarnVault is
             IERC20(vaultParams.asset).balanceOf(address(this));
 
         for (uint256 i = 0; i < borrowers.length; i++) {
-            totalBalance += _productToUSDCBalance(IMM(mm), borrowers[i]);
+            totalBalance += _productToUSDCBalance(borrowers[i]);
         }
 
         return totalBalance;
