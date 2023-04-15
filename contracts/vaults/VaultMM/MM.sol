@@ -1,7 +1,7 @@
 /**
  * SPDX-License-Identifier: UNLICENSED
  */
-pragma solidity 0.8.10;
+pragma solidity =0.8.4;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
@@ -11,8 +11,26 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IAggregatorInterface} from "../../interfaces/IAggregatorInterface.sol";
 import {IMM} from "../../interfaces/IMM.sol";
 
-contract MM is Ownable, IMM {
+contract MM is Ownable {
     using SafeERC20 for IERC20;
+
+    /// @notice Stores all the products
+    struct Product {
+        // MM spread to charge on swap
+        uint32 mmSpread;
+        // Provider spread to charge on swap
+        uint32 providerSpread;
+        // Minimum amount for issuance/redemption
+        uint256 minProviderSwap;
+        // Sweeper address for issuing product token
+        address issueAddress;
+        // Sweeper address for redeeming product token
+        address redeemAddress;
+        // Oracle for product
+        address oracle;
+        // Is product whitelisted
+        bool isWhitelisted;
+    }
 
     mapping(address => Product) public products;
 
@@ -33,6 +51,27 @@ contract MM is Ownable, IMM {
     address public constant RIBBON_EARN_USDC_VAULT =
         0x84c2b16FA6877a8fF4F3271db7ea837233DFd6f0;
 
+    /************************************************
+     *  EVENTS
+     ***********************************************/
+    event ProductSet(
+        address indexed product,
+        uint32 mmSpread,
+        uint32 providerSpread,
+        uint256 minProviderSwap,
+        address indexed issueAddress,
+        address indexed redeemAddress,
+        address oracle,
+        bool isWhitelisted
+    );
+    event ProductSwapped(
+        address indexed fromAsset,
+        address indexed toAsset,
+        uint256 amountIn,
+        uint256 amountOut
+    );
+    event Settled(address indexed asset, uint256 amountInAsset);
+
     /**
      * @notice Converts from product to USDC
      * @param _product is the product asset
@@ -48,7 +87,7 @@ contract MM is Ownable, IMM {
         uint256 latestAnswer = uint256(oracle.latestAnswer());
         uint256 decimals = oracle.decimals();
 
-        return (_amount * latestAnswer) / (10**decimals);
+        return (_amount * latestAnswer) / 10**decimals;
     }
 
     /**
@@ -66,7 +105,7 @@ contract MM is Ownable, IMM {
         uint256 latestAnswer = uint256(oracle.latestAnswer());
         uint256 decimals = oracle.decimals();
 
-        return (_amount * (10**decimals)) / latestAnswer;
+        return (_amount * 10**decimals) / latestAnswer;
     }
 
     /**
