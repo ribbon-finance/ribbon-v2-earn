@@ -41,7 +41,7 @@ contract MM is Ownable {
      */
     mapping(address => uint256) public pendingSettledAssetAmount;
 
-    // Minimum for provider to accept issuance/redemption
+    // Minimum amount in USDC for provider to accept issuance/redemption
     uint256 public minProviderSwap;
 
     /************************************************
