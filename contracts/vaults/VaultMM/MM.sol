@@ -22,7 +22,7 @@ contract MM is Ownable {
         uint32 mmSpread;
         // Provider Product <> USDC spread to charge on swap
         uint32 providerSpread;
-        // Minimum $$ amount for provider to accept issuance/redemption
+        // Minimum USDC amount for provider to accept issuance/redemption
         uint256 minProviderSwap;
         // Sweeper address to send USDC for issuing product token
         address issueAddress;
