@@ -850,27 +850,30 @@ contract RibbonEarnVault is
                     borrowerWeights[borrowers[i]].borrowerWeight) /
                     totalBorrowerWeight;
 
-            uint256 currProductBalance = _productToUSDCBalance(borrowers[i]);
+            uint256 productBalance = _productToUSDCBalance(borrowers[i]);
+
+            IMM iMM = IMM(mm);
+            (,,uint256 minSwapAmount,,,,) = iMM.products(borrowers[i]);
 
             // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
-            if (currProductBalance > amtToLendToBorrower) {
+            if (productBalance > amtToLendToBorrower + minSwapAmount) {
                 uint256 USDCToProductAmount =
-                    IMM(mm).convertToProductPrice(
+                    iMM.convertToProductPrice(
                         borrowers[i],
-                        amtToLendToBorrower - currProductBalance
+                        productBalance - amtToLendToBorrower
                     );
 
                 IERC20(borrowers[i]).safeApprove(mm, USDCToProductAmount);
-                IMM(mm).swap(borrowers[i], USDC, USDCToProductAmount);
-            } else if (amtToLendToBorrower > currProductBalance) {
+                iMM.swap(borrowers[i], USDC, USDCToProductAmount);
+            } else if (amtToLendToBorrower > productBalance + minSwapAmount) {
                 IERC20(vaultParams.asset).safeApprove(
                     mm,
-                    amtToLendToBorrower - currProductBalance
+                    amtToLendToBorrower - productBalance
                 );
-                IMM(mm).swap(
+                iMM.swap(
                     USDC,
                     borrowers[i],
-                    amtToLendToBorrower - currProductBalance
+                    amtToLendToBorrower - productBalance
                 );
             }
         }
