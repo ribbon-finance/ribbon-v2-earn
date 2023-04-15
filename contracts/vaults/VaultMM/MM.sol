@@ -22,8 +22,6 @@ contract MM is Ownable {
         uint32 mmSpread;
         // Provider Product <> USDC spread to charge on swap
         uint32 providerSpread;
-        // Minimum USDC amount for provider to accept issuance/redemption
-        uint256 minProviderSwap;
         // Sweeper address to send USDC for issuing product token
         address issueAddress;
         // Sweeper address to send Product for redeeming product token for USDC
@@ -50,6 +48,8 @@ contract MM is Ownable {
     uint8 private constant USDC_DECIMALS = 6;
     uint256 private constant TOTAL_PCT = 1000000; // Equals 100%
 
+    // Minimum 5K USDC amount for provider to accept issuance/redemption
+    uint256 public constant MIN_PROVIDER_SWAP = 5000 * 10**USDC_DECIMALS;
     uint256 public constant ORACLE_DIFF_THRESH_PCT = 100000; // Equals 10%
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     // Ribbon EARN USDC vault
@@ -63,7 +63,6 @@ contract MM is Ownable {
         address indexed product,
         uint32 mmSpread,
         uint32 providerSpread,
-        uint256 minProviderSwap,
         address indexed issueAddress,
         address indexed redeemAddress,
         address oracle,
@@ -78,11 +77,11 @@ contract MM is Ownable {
     event Settled(address indexed asset, uint256 amountInAsset);
 
     /**
-     * @notice Converts from product to USDC
+     * @notice Converts from product to USDC amount
      * @param _product is the product asset
      * @param _amount is the amount of the product
      */
-    function convertToUSDCPrice(address _product, uint256 _amount)
+    function convertToUSDCAmount(address _product, uint256 _amount)
         public
         view
         returns (uint256)
@@ -102,11 +101,11 @@ contract MM is Ownable {
     }
 
     /**
-     * @notice Converts from USDC to product
+     * @notice Converts from USDC to product amount
      * @param _product is the product asset
      * @param _amount is the amount of USDC
      */
-    function convertToProductPrice(address _product, uint256 _amount)
+    function convertToProductAmount(address _product, uint256 _amount)
         public
         view
         returns (uint256)
@@ -132,7 +131,6 @@ contract MM is Ownable {
      * @param _product is the product address (ex: bIB01 address)
      * @param _mmSpread is the mm product / USDC spread fee
      * @param _providerSpread is the provider product / USDC spread fee
-     * @param _minProviderSwap is the minimum provider amount to faciliate issuance/redemption
      * @param _issueAddress is the sweeper address
      *                      for sending USDC for product issuance
      * @param _redeemAddress is the sweeper address
@@ -144,7 +142,6 @@ contract MM is Ownable {
         address _product,
         uint32 _mmSpread,
         uint32 _providerSpread,
-        uint256 _minProviderSwap,
         address _issueAddress,
         address _redeemAddress,
         address _oracle,
@@ -160,7 +157,6 @@ contract MM is Ownable {
         products[_product] = Product(
             _mmSpread,
             _providerSpread,
-            _minProviderSwap,
             _issueAddress,
             _redeemAddress,
             _oracle,
@@ -171,7 +167,6 @@ contract MM is Ownable {
             _product,
             _mmSpread,
             _providerSpread,
-            _minProviderSwap,
             _issueAddress,
             _redeemAddress,
             _oracle,
@@ -200,8 +195,12 @@ contract MM is Ownable {
         // Require product whitelisted
         require(products[product].isWhitelisted, "!whitelisted");
         require(
-            _amount >= products[product].minProviderSwap,
-            "_amount <= minProviderSwap"
+            (
+                _fromAsset == USDC
+                    ? _amount
+                    : convertToUSDCAmount(_toAsset, _amount)
+            ) >= MIN_PROVIDER_SWAP,
+            "_amount <= MIN_PROVIDER_SWAP"
         );
 
         uint32 mmSpread = products[product].mmSpread;
@@ -231,8 +230,8 @@ contract MM is Ownable {
         // Convert to swapped asset
         uint256 amountOut =
             _toAsset == USDC
-                ? convertToUSDCPrice(product, amountAfterProviderSpread)
-                : convertToProductPrice(product, amountAfterProviderSpread);
+                ? convertToUSDCAmount(product, amountAfterProviderSpread)
+                : convertToProductAmount(product, amountAfterProviderSpread);
 
         pendingSettledAssetAmount[_toAsset] += amountOut;
 

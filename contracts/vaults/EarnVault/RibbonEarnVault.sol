@@ -851,28 +851,29 @@ contract RibbonEarnVault is
                     totalBorrowerWeight;
 
             IMM iMM = IMM(mm);
-            (,,uint256 minSwapAmount,,,,) = iMM.products(borrowers[i]);
-            uint256 productBalance = _productToUSDCBalance(borrowers[i]);
+            uint256 minProviderSwap = iMM.MIN_PROVIDER_SWAP();
+
+            uint256 productBalanceInUSDC = _productToUSDCBalance(borrowers[i]);
 
             // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
-            if (productBalance > amtToLendToBorrower + minSwapAmount) {
-                uint256 USDCToProductAmount =
-                    iMM.convertToProductPrice(
+            if (productBalanceInUSDC > amtToLendToBorrower + minProviderSwap) {
+                uint256 usdcToProductAmount =
+                    iMM.convertToProductAmount(
                         borrowers[i],
-                        productBalance - amtToLendToBorrower
+                        productBalanceInUSDC - amtToLendToBorrower
                     );
 
-                IERC20(borrowers[i]).safeApprove(mm, USDCToProductAmount);
-                iMM.swap(borrowers[i], USDC, USDCToProductAmount);
-            } else if (amtToLendToBorrower > productBalance + minSwapAmount) {
+                IERC20(borrowers[i]).safeApprove(mm, usdcToProductAmount);
+                iMM.swap(borrowers[i], USDC, usdcToProductAmount);
+            } else if (amtToLendToBorrower > productBalanceInUSDC + minProviderSwap) {
                 IERC20(vaultParams.asset).safeApprove(
                     mm,
-                    amtToLendToBorrower - productBalance
+                    amtToLendToBorrower - productBalanceInUSDC
                 );
                 iMM.swap(
                     USDC,
                     borrowers[i],
-                    amtToLendToBorrower - productBalance
+                    amtToLendToBorrower - productBalanceInUSDC
                 );
             }
         }
@@ -1190,15 +1191,15 @@ contract RibbonEarnVault is
         returns (uint256)
     {
         IMM imm = IMM(mm);
-        uint256 productBalance = IERC20(product).balanceOf(address(this));
+        uint256 productBalanceInUSDC = IERC20(product).balanceOf(address(this));
         // Include pending settled amount due to T+0 lag between issuance/redemption
         uint256 pendingProductBalance =
             imm.pendingSettledAssetAmount(product);
 
         return
-            imm.convertToUSDCPrice(
+            imm.convertToUSDCAmount(
                 product,
-                productBalance + pendingProductBalance
+                productBalanceInUSDC + pendingProductBalance
             );
     }
 

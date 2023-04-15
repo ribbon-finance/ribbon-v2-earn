@@ -4,13 +4,14 @@ pragma solidity =0.8.4;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IMM {
+    function MIN_PROVIDER_SWAP() external view returns (uint256);
+
     function products(address _product)
         external
         view
         returns (
             uint32,
             uint32,
-            uint256,
             address,
             address,
             address,
@@ -22,12 +23,12 @@ interface IMM {
         view
         returns (uint256);
 
-    function convertToUSDCPrice(address _product, uint256 _amount)
+    function convertToUSDCAmount(address _product, uint256 _amount)
         external
         view
         returns (uint256);
 
-    function convertToProductPrice(address _product, uint256 _amount)
+    function convertToProductAmount(address _product, uint256 _amount)
         external
         view
         returns (uint256);
@@ -36,7 +37,6 @@ interface IMM {
         address _product,
         uint32 _mmSpread,
         uint32 _providerSpread,
-        uint256 _minProviderSwap,
         address _issueAddress,
         address _redeemAddress,
         address _oracle,
