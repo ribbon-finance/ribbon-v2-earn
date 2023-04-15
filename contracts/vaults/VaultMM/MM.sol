@@ -16,17 +16,17 @@ contract MM is Ownable {
 
     /// @notice Stores all the products
     struct Product {
-        // MM spread to charge on swap
+        // MM Product <> USDC spread to charge on every swap
         uint32 mmSpread;
-        // Provider spread to charge on swap
+        // Provider Product <> USDC spread to charge on swap
         uint32 providerSpread;
-        // Minimum amount for issuance/redemption
+        // Minimum $$ amount for provider to accept issuance/redemption
         uint256 minProviderSwap;
-        // Sweeper address for issuing product token
+        // Sweeper address to send USDC for issuing product token
         address issueAddress;
-        // Sweeper address for redeeming product token
+        // Sweeper address to send Product for redeeming product token for USDC
         address redeemAddress;
-        // Oracle for product
+        // Product/USD Oracle
         address oracle;
         // Is product whitelisted
         bool isWhitelisted;
