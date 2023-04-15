@@ -4,7 +4,13 @@ pragma solidity =0.8.4;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IMM {
-    function MIN_PROVIDER_SWAP() external view returns (uint256);
+    function ORACLE_DIFF_THRESH_PCT() external view returns (uint256);
+
+    function USDC() external view returns (address);
+
+    function RIBBON_EARN_USDC_VAULT() external view returns (address);
+
+    function minProviderSwap() external view returns (uint256);
 
     function products(address _product)
         external
@@ -32,6 +38,8 @@ interface IMM {
         external
         view
         returns (uint256);
+
+    function setMinProviderSwap(uint256 _minProviderSwap) external;
 
     function setProduct(
         address _product,

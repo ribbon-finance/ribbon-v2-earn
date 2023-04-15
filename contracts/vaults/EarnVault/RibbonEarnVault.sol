@@ -346,7 +346,7 @@ contract RibbonEarnVault is
      * @notice Sets the new mm
      * @param newMM is the address of the new mm
      */
-    function setNewMM(address newMM) external onlyOwner {
+    function setMM(address newMM) external onlyOwner {
         require(newMM != address(0), "R53");
         emit MMSet(mm, newMM);
         mm = newMM;
@@ -851,7 +851,7 @@ contract RibbonEarnVault is
                     totalBorrowerWeight;
 
             IMM iMM = IMM(mm);
-            uint256 minProviderSwap = iMM.MIN_PROVIDER_SWAP();
+            uint256 minProviderSwap = iMM.minProviderSwap();
 
             uint256 productBalanceInUSDC = _productToUSDCBalance(borrowers[i]);
 

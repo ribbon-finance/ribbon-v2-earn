@@ -41,6 +41,9 @@ contract MM is Ownable {
      */
     mapping(address => uint256) public pendingSettledAssetAmount;
 
+    // Minimum for provider to accept issuance/redemption
+    uint256 public minProviderSwap;
+
     /************************************************
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
@@ -48,8 +51,6 @@ contract MM is Ownable {
     uint8 private constant USDC_DECIMALS = 6;
     uint256 private constant TOTAL_PCT = 1000000; // Equals 100%
 
-    // Minimum 5K USDC amount for provider to accept issuance/redemption
-    uint256 public constant MIN_PROVIDER_SWAP = 5000 * 10**USDC_DECIMALS;
     uint256 public constant ORACLE_DIFF_THRESH_PCT = 100000; // Equals 10%
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     // Ribbon EARN USDC vault
@@ -68,6 +69,12 @@ contract MM is Ownable {
         address oracle,
         bool isWhitelisted
     );
+
+    event MinProviderSwapSet(
+        uint256 oldMinProviderSwap,
+        uint256 newMinProviderSwap
+    );
+
     event ProductSwapped(
         address indexed fromAsset,
         address indexed toAsset,
@@ -75,6 +82,11 @@ contract MM is Ownable {
         uint256 amountOut
     );
     event Settled(address indexed asset, uint256 amountInAsset);
+
+    constructor() {
+        // 5K USDC amount min
+        minProviderSwap = 5000 * 10**USDC_DECIMALS;
+    }
 
     /**
      * @notice Converts from product to USDC amount
@@ -124,6 +136,11 @@ contract MM is Ownable {
             (_amount *
                 10**oracleDecimals *
                 10**(productDecimals - USDC_DECIMALS)) / latestAnswer;
+    }
+
+    function setMinProviderSwap(uint256 _minProviderSwap) external onlyOwner {
+        emit MinProviderSwapSet(minProviderSwap, _minProviderSwap);
+        minProviderSwap = _minProviderSwap;
     }
 
     /**
@@ -199,8 +216,8 @@ contract MM is Ownable {
                 _fromAsset == USDC
                     ? _amount
                     : convertToUSDCAmount(_toAsset, _amount)
-            ) >= MIN_PROVIDER_SWAP,
-            "_amount <= MIN_PROVIDER_SWAP"
+            ) >= minProviderSwap,
+            "_amount <= minProviderSwap"
         );
 
         uint32 mmSpread = products[product].mmSpread;
