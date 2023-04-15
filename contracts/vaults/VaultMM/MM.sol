@@ -46,6 +46,7 @@ contract MM is Ownable {
      ***********************************************/
 
     uint256 public constant TOTAL_PCT = 1000000; // Equals 100%
+    uint256 public constant ORACLE_DIFF_THRESH_PCT = 100000; // Equals 10%
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     // Ribbon EARN USDC vault
     address public constant RIBBON_EARN_USDC_VAULT =
@@ -84,8 +85,9 @@ contract MM is Ownable {
     {
         IAggregatorInterface oracle =
             IAggregatorInterface(products[_product].oracle);
-        uint256 latestAnswer = uint256(oracle.latestAnswer());
         uint256 decimals = oracle.decimals();
+        uint256 latestAnswer =
+            _latestAnswer(uint256(oracle.latestAnswer()), decimals);
 
         return (_amount * latestAnswer) / 10**decimals;
     }
@@ -102,8 +104,10 @@ contract MM is Ownable {
     {
         IAggregatorInterface oracle =
             IAggregatorInterface(products[_product].oracle);
-        uint256 latestAnswer = uint256(oracle.latestAnswer());
+
         uint256 decimals = oracle.decimals();
+        uint256 latestAnswer =
+            _latestAnswer(uint256(oracle.latestAnswer()), decimals);
 
         return (_amount * 10**decimals) / latestAnswer;
     }
@@ -236,5 +240,23 @@ contract MM is Ownable {
             ? _pendingSettledAssetAmount
             : amtToClaim;
         emit Settled(_asset, amtToClaim);
+    }
+
+    /**
+     * @notice Filters in case of chainlink error, maintains 10% bound
+     * @param _answer is the latest answer from the oracle
+     * @param _decimals is the amount of decimals of the oracle answer
+     */
+    function _latestAnswer(uint256 _answer, uint256 _decimals)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 baseAnswer = 100 * 10**_decimals;
+        return
+            (_answer - baseAnswer) >
+                (ORACLE_DIFF_THRESH_PCT * baseAnswer) / TOTAL_PCT
+                ? baseAnswer
+                : _answer;
     }
 }
