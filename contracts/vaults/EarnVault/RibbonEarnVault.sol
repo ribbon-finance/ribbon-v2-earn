@@ -26,8 +26,7 @@ import {VaultLifecycleEarn} from "../../libraries/VaultLifecycleEarn.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
-import {IRibbonLend} from "../../interfaces/IRibbonLend.sol";
-import {IRibbonLendFactory} from "../../interfaces/IRibbonLendFactory.sol";
+import {IMM} from "../../interfaces/IMM.sol";
 
 /**
  * Earn Vault Error Codes
@@ -81,6 +80,7 @@ import {IRibbonLendFactory} from "../../interfaces/IRibbonLendFactory.sol";
  * R50: loan pct + option pct == total PCT
  * R51: invalid pending option seller
  * R52: migrate called twice
+ * R53: invalid mm address
  */
 
 /**
@@ -138,6 +138,8 @@ contract RibbonEarnVault is
 
     event OptionSellerSet(address oldOptionSeller, address newOptionSeller);
 
+    event MMSet(address oldMM, address newMM);
+
     event NewAllocationSet(
         uint256 oldLoanAllocation,
         uint256 oldOptionAllocation,
@@ -189,6 +191,7 @@ contract RibbonEarnVault is
      * @param _borrowers is the addresses of the basket of borrowing entities (EX: Wintermute, GSR, Alameda, Genesis)
      * @param _borrowerWeights is the borrow weight of the addresses
      * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
+     * @param _mm is the market maker that faciliates product swap
      * @param _managementFee is the management fee pct.
      * @param _performanceFee is the perfomance fee pct.
      * @param _tokenName is the name of the token
@@ -200,6 +203,7 @@ contract RibbonEarnVault is
         address[] _borrowers;
         uint128[] _borrowerWeights;
         address _optionSeller;
+        address _mm;
         address _feeRecipient;
         uint256 _managementFee;
         uint256 _performanceFee;
@@ -223,6 +227,7 @@ contract RibbonEarnVault is
         Vault.AllocationState calldata _allocationState
     ) external initializer {
         require(_initParams._owner != address(0), "R3");
+        require(_initParams._mm != address(0), "R53");
 
         VaultLifecycleEarn.verifyInitializerParams(
             _initParams._keeper,
@@ -246,6 +251,7 @@ contract RibbonEarnVault is
 
         feeRecipient = _initParams._feeRecipient;
         optionSeller = _initParams._optionSeller;
+        mm = _initParams._mm;
         performanceFee = _initParams._performanceFee;
         managementFee =
             (_initParams._managementFee * Vault.FEE_MULTIPLIER) /
@@ -334,6 +340,16 @@ contract RibbonEarnVault is
         emit OptionSellerSet(optionSeller, newOptionSeller);
         pendingOptionSeller = newOptionSeller;
         lastOptionSellerChange = block.timestamp;
+    }
+
+    /**
+     * @notice Sets the new mm
+     * @param newMM is the address of the new mm
+     */
+    function setNewMM(address newMM) external onlyOwner {
+        require(newMM != address(0), "R53");
+        emit MMSet(mm, newMM);
+        mm = newMM;
     }
 
     /**
@@ -834,28 +850,23 @@ contract RibbonEarnVault is
                     borrowerWeights[borrowers[i]].borrowerWeight) /
                     totalBorrowerWeight;
 
-            IRibbonLend lendPool = IRibbonLend(borrowers[i]);
-            uint256 currLendingPoolBalance = _lendingPoolBalance(lendPool);
+            uint256 currProductBalance = _productToUSDCBalance(borrowers[i]);
 
             // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
-            if (currLendingPoolBalance > amtToLendToBorrower) {
-                lendPool.redeemCurrency(
-                    currLendingPoolBalance - amtToLendToBorrower
+            if (currProductBalance > amtToLendToBorrower) {
+                IERC20(borrowers[i]).safeApprove(
+                    mm,
+                    currProductBalance - amtToLendToBorrower
                 );
-            } else if (amtToLendToBorrower > currLendingPoolBalance) {
+                IMM(mm).swap(borrowers[i], USDC, currProductBalance - amtToLendToBorrower);
+            } else if (amtToLendToBorrower > currProductBalance) {
                 IERC20(vaultParams.asset).safeApprove(
-                    borrowers[i],
-                    amtToLendToBorrower - currLendingPoolBalance
+                    mm,
+                    amtToLendToBorrower - currProductBalance
                 );
-                lendPool.provide(
-                    amtToLendToBorrower - currLendingPoolBalance,
-                    address(0)
-                );
+                IMM(mm).swap(USDC, borrowers[i], amtToLendToBorrower - currProductBalance);
             }
         }
-
-        // Withdraw RBN reward from Ribbon Lend and send to Gauge Minter
-        _withdrawRibbonLendRBNReward();
     }
 
     /**
@@ -1159,21 +1170,22 @@ contract RibbonEarnVault is
      *  GETTERS
      ***********************************************/
 
-    /**
-     * @notice Returns the Ribbon Earn vault balance in a Ribbon Lend Pool
-     * @param lendPool is the Ribbon Lend pool
-     * @return the amount of `asset` deposited into the lend pool
-     */
-    function _lendingPoolBalance(IRibbonLend lendPool)
-        internal
-        view
-        returns (uint256)
-    {
-        // Current exchange rate is 18-digits decimal
-        return
-            (lendPool.balanceOf(address(this)) *
-                lendPool.getCurrentExchangeRate()) / 10**18;
-    }
+     /**
+      * @notice Returns the Ribbon Earn vault balance in a product
+      * @param product is the product held
+      * @return the amount of `asset` deposited into the product
+      */
+     function _productToUSDCBalance(address product)
+         internal
+         view
+         returns (uint256)
+     {
+         IMM mmContract = IMM(mm);
+         uint256 productBalance = IERC20(product).balanceOf(address(this));
+         uint256 pendingProductBalance = mmContract.pendingSettledAssetAmount(product);
+
+         return mmContract.convertToUSDCPrice(product, productBalance + pendingProductBalance);
+     }
 
     /**
      * @notice Returns the asset balance held on the vault for the account
@@ -1259,7 +1271,7 @@ contract RibbonEarnVault is
             IERC20(vaultParams.asset).balanceOf(address(this));
 
         for (uint256 i = 0; i < borrowers.length; i++) {
-            totalBalance += _lendingPoolBalance(IRibbonLend(borrowers[i]));
+            totalBalance += _productToUSDCBalance(borrowers[i]);
         }
 
         return totalBalance;
