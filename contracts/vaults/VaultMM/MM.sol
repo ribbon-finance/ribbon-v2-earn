@@ -100,6 +100,7 @@ contract MM is Ownable {
     {
         IAggregatorInterface oracle =
             IAggregatorInterface(products[_product].oracle);
+
         uint256 oracleDecimals = oracle.decimals();
         uint256 latestAnswer =
             _latestAnswer(uint256(oracle.latestAnswer()), oracleDecimals);
@@ -109,7 +110,7 @@ contract MM is Ownable {
         // Shift to USDC amount + shift decimals
         return
             (_amount * latestAnswer) /
-            (10**oracleDecimals * 10**(productDecimals - USDC_DECIMALS));
+            10**(oracleDecimals + productDecimals - USDC_DECIMALS);
     }
 
     /**
@@ -133,11 +134,14 @@ contract MM is Ownable {
 
         // Shift to product amount + shift decimals
         return
-            (_amount *
-                10**oracleDecimals *
-                10**(productDecimals - USDC_DECIMALS)) / latestAnswer;
+            (_amount * 10**(oracleDecimals + productDecimals - USDC_DECIMALS)) /
+            latestAnswer;
     }
 
+    /**
+     * @notice Sets the min amount to be able to swap
+     * @param _minProviderSwap is the swap amount in USDC
+     */
     function setMinProviderSwap(uint256 _minProviderSwap) external onlyOwner {
         emit MinProviderSwapSet(minProviderSwap, _minProviderSwap);
         minProviderSwap = _minProviderSwap;
@@ -215,18 +219,24 @@ contract MM is Ownable {
             (
                 _fromAsset == USDC
                     ? _amount
-                    : convertToUSDCAmount(_toAsset, _amount)
+                    : convertToUSDCAmount(product, _amount)
             ) >= minProviderSwap,
             "_amount <= minProviderSwap"
         );
-
-        uint32 mmSpread = products[product].mmSpread;
-        uint256 amountIn = (_amount * (TOTAL_PCT - mmSpread)) / TOTAL_PCT;
 
         IERC20 asset = IERC20(_fromAsset);
 
         // Transfer to MM
         asset.safeTransferFrom(RIBBON_EARN_USDC_VAULT, address(this), _amount);
+
+        uint32 mmSpread = products[product].mmSpread;
+        uint256 amountIn = (_amount * (TOTAL_PCT - mmSpread)) / TOTAL_PCT;
+
+        // Transfer to owner
+        if (mmSpread > 0) {
+            asset.safeTransfer(owner(), _amount - amountIn);
+        }
+
         // Transfer to product sweeper
         asset.safeTransfer(
             _fromAsset == USDC
@@ -234,10 +244,6 @@ contract MM is Ownable {
                 : products[product].redeemAddress,
             amountIn
         );
-        // Transfer fees
-        if (mmSpread > 0) {
-            asset.safeTransfer(owner(), (_amount * mmSpread) / TOTAL_PCT);
-        }
 
         // Provider charges spread
         uint256 amountAfterProviderSpread =
