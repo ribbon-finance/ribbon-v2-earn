@@ -49,6 +49,7 @@ contract MM is Ownable {
      ***********************************************/
 
     uint8 private constant USDC_DECIMALS = 6;
+    uint8 private constant BIB01_ORACLE_BASE_ANSWER = 100;
     uint256 private constant TOTAL_PCT = 1000000; // Equals 100%
 
     uint256 public constant ORACLE_DIFF_THRESH_PCT = 100000; // Equals 10%
@@ -289,7 +290,7 @@ contract MM is Ownable {
         pure
         returns (uint256)
     {
-        uint256 baseAnswer = 100 * 10**_decimals;
+        uint256 baseAnswer = BIB01_ORACLE_BASE_ANSWER * 10**_decimals;
         return
             (_answer - baseAnswer) >
                 (ORACLE_DIFF_THRESH_PCT * baseAnswer) / TOTAL_PCT
