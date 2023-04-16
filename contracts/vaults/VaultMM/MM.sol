@@ -152,7 +152,7 @@ contract MM is Ownable {
      *                      for sending USDC for product issuance
      * @param _redeemAddress is the sweeper address
      *                      for sending product token for product redemption
-     * @param _oracle is the oracle for product
+     * @param _oracleAddress is the oracle for product
      * @param _isWhitelisted is whether product is whitelisted
      */
     function setProduct(
@@ -161,22 +161,22 @@ contract MM is Ownable {
         uint32 _providerSpread,
         address _issueAddress,
         address _redeemAddress,
-        address _oracle,
+        address _oracleAddress,
         bool _isWhitelisted
     ) external onlyOwner {
         require(_product != address(0), "!_product");
-        require(_mmSpread <= 10000, "! _mmSpread <= 1%");
-        require(_providerSpread <= 10000, "! _providerSpread <= 1%");
+        require(_mmSpread <= 10000, "!_mmSpread <= 1%");
+        require(_providerSpread <= 10000, "!_providerSpread <= 1%");
         require(_issueAddress != address(0), "!_issueAddress");
         require(_redeemAddress != address(0), "!_redeemAddress");
-        require(_oracle != address(0), "!_oracle");
+        require(_oracleAddress != address(0), "!_oracleAddress");
 
         products[_product] = Product(
             _mmSpread,
             _providerSpread,
             _issueAddress,
             _redeemAddress,
-            _oracle,
+            _oracleAddress,
             _isWhitelisted
         );
 
@@ -186,7 +186,7 @@ contract MM is Ownable {
             _providerSpread,
             _issueAddress,
             _redeemAddress,
-            _oracle,
+            _oracleAddress,
             _isWhitelisted
         );
     }
@@ -228,7 +228,7 @@ contract MM is Ownable {
         // Transfer to MM
         asset.safeTransferFrom(RIBBON_EARN_USDC_VAULT, address(this), _amount);
         // Transfer to product sweeper
-        asset.transfer(
+        asset.safeTransfer(
             _fromAsset == USDC
                 ? products[product].issueAddress
                 : products[product].redeemAddress,
@@ -236,7 +236,7 @@ contract MM is Ownable {
         );
         // Transfer fees
         if (mmSpread > 0) {
-            asset.transfer(owner(), (_amount * mmSpread) / TOTAL_PCT);
+            asset.safeTransfer(owner(), (_amount * mmSpread) / TOTAL_PCT);
         }
 
         // Provider charges spread
@@ -262,7 +262,7 @@ contract MM is Ownable {
      */
     function settleTPlus0Transfer(address _asset) external {
         uint256 amtToClaim = IERC20(_asset).balanceOf(address(this));
-        IERC20(_asset).transfer(RIBBON_EARN_USDC_VAULT, amtToClaim);
+        IERC20(_asset).safeTransfer(RIBBON_EARN_USDC_VAULT, amtToClaim);
         uint256 _pendingSettledAssetAmount = pendingSettledAssetAmount[_asset];
         // If more of asset in contract than pending, set to 0.
         // Otherwise set to amount in contract
