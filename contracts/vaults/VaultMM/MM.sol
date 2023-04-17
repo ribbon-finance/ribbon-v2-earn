@@ -276,16 +276,17 @@ contract MM is Ownable {
      * @param _asset is the product or USDC
      */
     function settleTPlus0Transfer(address _asset) external {
-        uint256 amtToClaim = IERC20(_asset).balanceOf(address(this));
-        IERC20(_asset).safeTransfer(RIBBON_EARN_USDC_VAULT, amtToClaim);
+        uint256 amtToSettle = IERC20(_asset).balanceOf(address(this));
+        require(amtToSettle > 0, "!amtToSettle > 0");
+        IERC20(_asset).safeTransfer(RIBBON_EARN_USDC_VAULT, amtToSettle);
         uint256 _pendingSettledAssetAmount = pendingSettledAssetAmount[_asset];
         // If more of asset in contract than pending, set to 0.
         // Otherwise set to amount in contract
-        pendingSettledAssetAmount[_asset] -= (amtToClaim >
+        pendingSettledAssetAmount[_asset] -= (amtToSettle >
             _pendingSettledAssetAmount)
             ? _pendingSettledAssetAmount
-            : amtToClaim;
-        emit Settled(_asset, amtToClaim);
+            : amtToSettle;
+        emit Settled(_asset, amtToSettle);
     }
 
     /**

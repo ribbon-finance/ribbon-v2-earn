@@ -639,6 +639,12 @@ describe("MM", () => {
   describe("settleTPlus0Transfer", () => {
     time.revertToSnapshotAfterEach();
 
+    it("reverts when amount to claim is 0", async function () {
+      await expect(
+        mm.settleTPlus0Transfer(BIB01_ADDRESS[chainId])
+      ).to.be.revertedWith("!amtToSettle > 0");
+    });
+
     it("settles TPlus0 transfer", async function () {
       await network.provider.request({
         method: "hardhat_impersonateAccount",
