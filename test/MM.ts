@@ -3,6 +3,8 @@ import {
   USDC_ADDRESS,
   BIB01_ADDRESS,
   BIB01_OWNER_ADDRESS,
+  MM_SPREAD,
+  BIB01_PROVIDER_SPREAD,
 } from "../constants/constants";
 import { expect } from "chai";
 import { constants, Contract } from "ethers";
@@ -24,8 +26,6 @@ const ORACLE_DIFF_THRESH_PCT = BigNumber.from("100000");
 const BASE_ORACLE_ANSWER = BigNumber.from("100").mul(
   BigNumber.from("10").pow("8")
 );
-const MM_SPREAD = 0; // 0bps
-const PROVIDER_SPREAD = 4000; // 40bps
 
 const chainId = network.config.chainId;
 
@@ -71,8 +71,8 @@ describe("MM", () => {
       .connect(signer)
       .setProduct(
         BIB01_ADDRESS[chainId],
-        MM_SPREAD,
-        PROVIDER_SPREAD,
+        MM_SPREAD[chainId],
+        BIB01_PROVIDER_SPREAD[chainId],
         BIB01_OWNER_ADDRESS[chainId],
         BIB01_OWNER_ADDRESS[chainId],
         mockOracle.address,
@@ -213,8 +213,8 @@ describe("MM", () => {
           .connect(signer2)
           .setProduct(
             BIB01_ADDRESS[chainId],
-            MM_SPREAD,
-            PROVIDER_SPREAD,
+            MM_SPREAD[chainId],
+            BIB01_PROVIDER_SPREAD[chainId],
             BIB01_OWNER_ADDRESS[chainId],
             BIB01_OWNER_ADDRESS[chainId],
             mockOracle.address,
@@ -227,8 +227,8 @@ describe("MM", () => {
       await expect(
         mm.setProduct(
           constants.AddressZero,
-          MM_SPREAD,
-          PROVIDER_SPREAD,
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           mockOracle.address,
@@ -242,7 +242,7 @@ describe("MM", () => {
         mm.setProduct(
           BIB01_ADDRESS[chainId],
           10001,
-          PROVIDER_SPREAD,
+          BIB01_PROVIDER_SPREAD[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           mockOracle.address,
@@ -255,7 +255,7 @@ describe("MM", () => {
       await expect(
         mm.setProduct(
           BIB01_ADDRESS[chainId],
-          MM_SPREAD,
+          MM_SPREAD[chainId],
           10001,
           BIB01_OWNER_ADDRESS[chainId],
           BIB01_OWNER_ADDRESS[chainId],
@@ -269,8 +269,8 @@ describe("MM", () => {
       await expect(
         mm.setProduct(
           BIB01_ADDRESS[chainId],
-          MM_SPREAD,
-          PROVIDER_SPREAD,
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
           constants.AddressZero,
           BIB01_OWNER_ADDRESS[chainId],
           mockOracle.address,
@@ -283,8 +283,8 @@ describe("MM", () => {
       await expect(
         mm.setProduct(
           BIB01_ADDRESS[chainId],
-          MM_SPREAD,
-          PROVIDER_SPREAD,
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           constants.AddressZero,
           mockOracle.address,
@@ -297,8 +297,8 @@ describe("MM", () => {
       await expect(
         mm.setProduct(
           BIB01_ADDRESS[chainId],
-          MM_SPREAD,
-          PROVIDER_SPREAD,
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           constants.AddressZero,
@@ -312,8 +312,8 @@ describe("MM", () => {
         .connect(signer)
         .setProduct(
           BIB01_ADDRESS[chainId],
-          MM_SPREAD,
-          PROVIDER_SPREAD,
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           mockOracle.address,
@@ -322,8 +322,8 @@ describe("MM", () => {
 
       const product = await mm.products(BIB01_ADDRESS[chainId]);
 
-      assert.equal(product[0], MM_SPREAD);
-      assert.equal(product[1], PROVIDER_SPREAD);
+      assert.equal(product[0], MM_SPREAD[chainId]);
+      assert.equal(product[1], BIB01_PROVIDER_SPREAD[chainId]);
       assert.equal(product[2], BIB01_OWNER_ADDRESS[chainId]);
       assert.equal(product[3], BIB01_OWNER_ADDRESS[chainId]);
       assert.equal(product[4], mockOracle.address);
@@ -333,8 +333,8 @@ describe("MM", () => {
         .to.emit(mm, "ProductSet")
         .withArgs(
           BIB01_ADDRESS[chainId],
-          MM_SPREAD,
-          PROVIDER_SPREAD,
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           BIB01_OWNER_ADDRESS[chainId],
           mockOracle.address,
@@ -376,8 +376,8 @@ describe("MM", () => {
     it("reverts when not whitelisted", async function () {
       await mm.setProduct(
         BIB01_ADDRESS[chainId],
-        MM_SPREAD,
-        PROVIDER_SPREAD,
+        MM_SPREAD[chainId],
+        BIB01_PROVIDER_SPREAD[chainId],
         BIB01_OWNER_ADDRESS[chainId],
         BIB01_OWNER_ADDRESS[chainId],
         mockOracle.address,
@@ -441,8 +441,8 @@ describe("MM", () => {
 
       await mm.setProduct(
         BIB01_ADDRESS[chainId],
-        PROVIDER_SPREAD,
-        PROVIDER_SPREAD,
+        BIB01_PROVIDER_SPREAD[chainId],
+        BIB01_PROVIDER_SPREAD[chainId],
         BIB01_OWNER_ADDRESS[chainId],
         BIB01_OWNER_ADDRESS[chainId],
         mockOracle.address,
@@ -548,8 +548,8 @@ describe("MM", () => {
 
       await mm.setProduct(
         BIB01_ADDRESS[chainId],
-        PROVIDER_SPREAD,
-        PROVIDER_SPREAD,
+        BIB01_PROVIDER_SPREAD[chainId],
+        BIB01_PROVIDER_SPREAD[chainId],
         BIB01_OWNER_ADDRESS[chainId],
         BIB01_OWNER_ADDRESS[chainId],
         mockOracle.address,
