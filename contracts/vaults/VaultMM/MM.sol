@@ -55,8 +55,7 @@ contract MM is Ownable {
     uint256 public constant ORACLE_DIFF_THRESH_PCT = 100000; // Equals 10%
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     // Ribbon EARN USDC vault
-    address public constant RIBBON_EARN_USDC_VAULT =
-        0x84c2b16FA6877a8fF4F3271db7ea837233DFd6f0;
+    address public immutable RIBBON_EARN_USDC_VAULT;
 
     /************************************************
      *  EVENTS
@@ -84,9 +83,18 @@ contract MM is Ownable {
     );
     event Settled(address indexed asset, uint256 amountInAsset);
 
-    constructor() {
+    /**
+     * @notice Constructor
+     * @param _RIBBON_EARN_USDC_VAULT is the Ribbon Earn USDC vault address
+     */
+    constructor(address _RIBBON_EARN_USDC_VAULT) {
+        require(
+            _RIBBON_EARN_USDC_VAULT != address(0),
+            "!_RIBBON_EARN_USDC_VAULT"
+        );
         // 5K USDC amount min
         minProviderSwap = 5000 * 10**USDC_DECIMALS;
+        RIBBON_EARN_USDC_VAULT = _RIBBON_EARN_USDC_VAULT;
     }
 
     /**

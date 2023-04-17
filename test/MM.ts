@@ -57,7 +57,7 @@ describe("MM", () => {
     const MM = await getContractFactory("MM", signer);
     const MockAggregator = await getContractFactory("MockAggregator", signer);
 
-    mm = await MM.deploy();
+    mm = await MM.deploy(RIBBON_EARN_USDC_VAULT);
     mockOracle = await MockAggregator.deploy(
       8,
       BigNumber.from("100").mul(BigNumber.from("10").pow(8))
@@ -78,6 +78,19 @@ describe("MM", () => {
         mockOracle.address,
         true
       );
+  });
+
+  describe("constructor", () => {
+    it("sets RIBBON_EARN_USDC_VAULT", async function () {
+      assert.equal(await mm.RIBBON_EARN_USDC_VAULT(), RIBBON_EARN_USDC_VAULT);
+    });
+
+    it("sets the minProviderSwap", async function () {
+      assert.equal(
+        (await mm.minProviderSwap()).toString(),
+        MIN_PROVIDER_SWAP.toString()
+      );
+    });
   });
 
   describe("convertToUSDCAmount", () => {
@@ -185,13 +198,6 @@ describe("MM", () => {
       await expect(
         mm.connect(signer2).setMinProviderSwap(0)
       ).to.be.revertedWith("Ownable: caller is not the owner");
-    });
-
-    it("set the correct value in constructor", async function () {
-      assert.equal(
-        (await mm.minProviderSwap()).toString(),
-        MIN_PROVIDER_SWAP.toString()
-      );
     });
 
     it("sets the min provider swap", async function () {
