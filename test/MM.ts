@@ -19,7 +19,7 @@ const { provider, getContractAt, getContractFactory } = ethers;
 
 const TOTAL_PCT = BigNumber.from("1000000");
 const RIBBON_EARN_USDC_VAULT = "0x84c2b16FA6877a8fF4F3271db7ea837233DFd6f0";
-const MIN_PROVIDER_SWAP = BigNumber.from("5000").mul(
+const MIN_PROVIDER_SWAP = BigNumber.from("7500").mul(
   BigNumber.from("10").pow("6")
 );
 const ORACLE_DIFF_THRESH_PCT = BigNumber.from("100000");

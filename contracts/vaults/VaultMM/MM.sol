@@ -92,8 +92,8 @@ contract MM is Ownable {
             _RIBBON_EARN_USDC_VAULT != address(0),
             "!_RIBBON_EARN_USDC_VAULT"
         );
-        // 5K USDC amount min
-        minProviderSwap = 5000 * 10**USDC_DECIMALS;
+        // 7.5K USDC amount min
+        minProviderSwap = 7500 * 10**USDC_DECIMALS;
         RIBBON_EARN_USDC_VAULT = _RIBBON_EARN_USDC_VAULT;
     }
 
