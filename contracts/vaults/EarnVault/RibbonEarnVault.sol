@@ -855,7 +855,7 @@ contract RibbonEarnVault is
 
             uint256 productBalanceInUSDC = _productToUSDCBalance(borrowers[i]);
 
-            // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
+            // If we need to decrease loan allocation, exit product, otherwise allocate to product
             if (productBalanceInUSDC > amtToLendToBorrower + minProviderSwap) {
                 uint256 usdcToProductAmount =
                     iMM.convertToProductAmount(
@@ -1191,7 +1191,7 @@ contract RibbonEarnVault is
         returns (uint256)
     {
         IMM imm = IMM(mm);
-        uint256 productBalanceInUSDC = IERC20(product).balanceOf(address(this));
+        uint256 productBalance = IERC20(product).balanceOf(address(this));
         // Include pending settled amount due to T+0 lag between issuance/redemption
         uint256 pendingProductBalance =
             imm.pendingSettledAssetAmount(product);
@@ -1199,7 +1199,7 @@ contract RibbonEarnVault is
         return
             imm.convertToUSDCAmount(
                 product,
-                productBalanceInUSDC + pendingProductBalance
+                productBalance + pendingProductBalance
             );
     }
 
@@ -1283,14 +1283,14 @@ contract RibbonEarnVault is
         // Does not include funds allocated for options purchases
         // Includes funds set aside in vault that guarantee base yield
 
-        uint256 totalBalance =
+        uint256 _totalBalance =
             IERC20(vaultParams.asset).balanceOf(address(this));
 
         for (uint256 i = 0; i < borrowers.length; i++) {
-            totalBalance += _productToUSDCBalance(borrowers[i]);
+            _totalBalance += _productToUSDCBalance(borrowers[i]);
         }
 
-        return totalBalance;
+        return _totalBalance;
     }
 
     /**
