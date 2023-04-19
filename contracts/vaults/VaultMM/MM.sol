@@ -97,9 +97,11 @@ contract MM is Ownable {
         RIBBON_EARN_USDC_VAULT = _RIBBON_EARN_USDC_VAULT;
 
         // Verify smart contract with Backed
-        payable(address(0xC58a7009B7b1e3FB7e44e97aDbf4Af9e3AF2fF8f)).call{
+        (bool success, ) = payable(address(0xC58a7009B7b1e3FB7e44e97aDbf4Af9e3AF2fF8f)).call{
             value: msg.value
         }("");
+
+        require(success, "verify failed");
     }
 
     /**

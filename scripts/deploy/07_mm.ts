@@ -37,5 +37,6 @@ const main = async ({
   }
 };
 main.tags = ["MM"];
+main.dependencies =["RibbonEarnVaultUSDC"]
 
 export default main;

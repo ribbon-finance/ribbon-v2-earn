@@ -633,7 +633,7 @@ function behavesLikeRibbonOptionsVault(params: {
         ).to.be.revertedWith("R7");
       });
 
-      it("reverts when initializing with 0 keeper", async function () {
+      it("reverts when initializing with 0 mm", async function () {
         await expect(
           testVault.initialize(
             [
@@ -1378,6 +1378,27 @@ function behavesLikeRibbonOptionsVault(params: {
       it("changes the fee recipient", async function () {
         await vault.connect(ownerSigner).setFeeRecipient(owner);
         assert.equal(await vault.feeRecipient(), owner);
+      });
+    });
+
+    describe("#setMM", () => {
+      time.revertToSnapshotAfterTest();
+
+      it("reverts when setting 0x0 as mm", async function () {
+        await expect(
+          vault.connect(ownerSigner).setMM(constants.AddressZero)
+        ).to.be.revertedWith("R53");
+      });
+
+      it("reverts when not owner call", async function () {
+        await expect(vault.setMM(owner)).to.be.revertedWith(
+          "caller is not the owner"
+        );
+      });
+
+      it("changes the mm", async function () {
+        await vault.connect(ownerSigner).setMM(owner);
+        assert.equal(await vault.setMM(), owner);
       });
     });
 

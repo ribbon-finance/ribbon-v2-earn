@@ -55,10 +55,9 @@ const main = async ({
     {
       _owner: owner,
       _keeper: keeper,
-      _borrowers: [BORROWERS.WINTERMUTE, BORROWERS.FOLKVANG],
+      _borrowers: [BORROWERS.BIB01],
       _borrowerWeights: [
-        BORROWER_WEIGHTS[BORROWERS.WINTERMUTE],
-        BORROWER_WEIGHTS[BORROWERS.FOLKVANG],
+        BORROWER_WEIGHTS[BORROWERS.BIB01],
       ],
       _optionSeller: OPTION_SELLER.ORBIT,
       _mm: mm,
