@@ -244,7 +244,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
       await asset.connect(assetOwnerSigner).transfer(mm.address, await mm.pendingSettledAssetAmount(assetAddress));
       await mm.connect(assetOwnerSigner).settleTPlus0Transfer(assetAddress);
-    }
+    };
 
     const rollToNextRound = async (
       buyOption: boolean = true,
@@ -278,7 +278,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await vault.connect(keeperSigner).rollToNextRound();
       }
 
-      if(setOracle){
+      if (setOracle) {
         // Increase product oracle price
         await mockOracle.connect(ownerSigner).setAnswer((await mockOracle.connect(ownerSigner).price()).add(BIB01_ORACLE_BASE_ANSWER.div(100)));
       }
@@ -2237,7 +2237,7 @@ function behavesLikeRibbonOptionsVault(params: {
         let balBefore = await assetContract.balanceOf(issueAddress);
         let product = await getContractAt("IERC20", borrowers[0]);
 
-        let amountToWithdraw = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)))
+        let amountToWithdraw = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)));
 
         await vault.connect(keeperSigner).rollToNextRound();
 
@@ -2258,7 +2258,7 @@ function behavesLikeRibbonOptionsVault(params: {
         // Interest Earned on product
         let product = await getContractAt("IERC20", borrowers[0]);
 
-        let usdcProductBalBefore = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)))
+        let usdcProductBalBefore = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)));
 
         const beforeBalance = await vault.totalBalance();
 
@@ -2273,7 +2273,7 @@ function behavesLikeRibbonOptionsVault(params: {
           .connect(optionSellerSigner)
           ["payOptionYield(uint256)"](yieldAmount);
 
-        let usdcProductBalAfter = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)))
+        let usdcProductBalAfter = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)));
 
         const afterBalance = await vault.totalBalance();
 

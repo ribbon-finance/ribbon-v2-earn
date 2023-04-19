@@ -12,7 +12,6 @@ import * as time from "./helpers/time";
 import { BigNumber } from "@ethersproject/bignumber";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { assert } from "./helpers/assertions";
-import { parseUnits } from "ethers/lib/utils";
 import { TEST_URI } from "../scripts/helpers/getDefaultEthersProvider";
 
 const { provider, getContractAt, getContractFactory } = ethers;

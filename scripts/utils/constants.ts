@@ -26,8 +26,8 @@ export const BORROWERS = {
 };
 
 export const BORROWER_SWEEPER_ADDRESSES = {
-  BIB01: {issue: "0xdfb5a92cbd8ad817566bdc8abeaf8be0e4387472", redeem: "0x30f46f481a9e1576eb79114029a84bc0687174b0"},
-}
+  BIB01: { issue: "0xdfb5a92cbd8ad817566bdc8abeaf8be0e4387472", redeem: "0x30f46f481a9e1576eb79114029a84bc0687174b0" },
+};
 
 export const BORROWER_WEIGHTS = {
   "0xCA30c93B02514f86d5C86a6e375E3A330B435Fb5": 100000,
