@@ -1,6 +1,7 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { NETWORK_NAMES } from "../../constants/constants";
+import { BigNumber } from "ethers";
 
 const main = async ({
   network,
@@ -18,11 +19,11 @@ const main = async ({
 
   const constructorArguments = [ribbonEarnUSDCVault.address];
 
-  const mm = await deploy(`MM:${networkName}`, {
+  const mm = await deploy(`MM`, {
     from: deployer,
     contract: "MM",
     args: constructorArguments,
-    value: "1",
+    value: BigNumber.from("1"),
   });
 
   console.log(`MM${networkName} @ ${mm.address}`);
@@ -37,6 +38,6 @@ const main = async ({
   }
 };
 main.tags = ["MM"];
-main.dependencies =["RibbonEarnVaultUSDC"]
+main.dependencies = ["RibbonEarnVaultUSDC"];
 
 export default main;
