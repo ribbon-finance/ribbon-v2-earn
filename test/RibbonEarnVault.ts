@@ -10,14 +10,13 @@ import {
   USDC_ADDRESS,
   STETH_ADDRESS,
   USDC_OWNER_ADDRESS,
-  RBN_ADDRESS,
-  RBN_OWNER_ADDRESS,
   BORROWERS,
   BORROWER_WEIGHTS,
   OPTION_SELLER,
-  RIBBON_MINTER,
-  RIBBON_LEND_FACTORY,
-  RIBBON_LEND_KEEPER,
+  BIB01_ADDRESS,
+  BIB01_OWNER_ADDRESS,
+  MM_SPREAD,
+  BIB01_PROVIDER_SPREAD,
 } from "../constants/constants";
 import {
   deployProxy,
@@ -42,6 +41,12 @@ const SCALED_SECONDS_PER_YEAR = BigNumber.from(SECONDS_PER_DAY * 365).mul(
   FEE_SCALING
 );
 
+const MM_TOTAL_PCT = BigNumber.from("1000000");
+
+const BIB01_ORACLE_BASE_ANSWER = BigNumber.from("100").mul(
+  BigNumber.from("10").pow("8")
+);
+
 const chainId = network.config.chainId;
 
 describe("RibbonEarnVault", () => {
@@ -59,12 +64,12 @@ describe("RibbonEarnVault", () => {
     tokenDecimals: 6,
     loanTermLength: BigNumber.from("7").mul(SECONDS_PER_DAY),
     optionPurchaseFreq: BigNumber.from("7").mul(SECONDS_PER_DAY),
-    loanAllocationPCT: BigNumber.from("995000"),
-    optionAllocationPCT: BigNumber.from("5000"),
+    loanAllocationPCT: BigNumber.from("980000"),
+    optionAllocationPCT: BigNumber.from("20000"),
     depositAmount: BigNumber.from("100000000000"),
     managementFee: BigNumber.from("2000000"),
     performanceFee: BigNumber.from("20000000"),
-    ribbonLendInterestEarned: BigNumber.from("69151056"),
+    tbillsInterestEarned: BigNumber.from("980000000"),
     minimumSupply: BigNumber.from("10").pow("3").toString(),
     gasLimits: {
       depositWorstCase: 363157,
@@ -99,7 +104,7 @@ describe("RibbonEarnVault", () => {
  * @param {string} params.minimumSupply - Minimum supply to maintain for share and asset balance
  * @param {BigNumber} params.managementFee - Management fee (6 decimals)
  * @param {BigNumber} params.performanceFee - PerformanceFee fee (6 decimals)
- * @param {BigNumber} params.ribbonLendInterestEarned - Interest earned from ribbon lend pools
+ * @param {BigNumber} params.tbillsInterestEarned - Interest earned from tbills product
  * @param {number[]} params.availableChains - ChainIds where the tests for the vault will be executed
  * @param {number[]} params.contractType - RibbonEarnVault
  * @param {string[]} params.borrowers - All borrower addresses in borrower basket
@@ -122,7 +127,7 @@ function behavesLikeRibbonOptionsVault(params: {
   minimumSupply: string;
   managementFee: BigNumber;
   performanceFee: BigNumber;
-  ribbonLendInterestEarned: BigNumber;
+  tbillsInterestEarned: BigNumber;
   gasLimits: {
     depositWorstCase: number;
     depositBestCase: number;
@@ -170,7 +175,7 @@ function behavesLikeRibbonOptionsVault(params: {
   let depositAmount = params.depositAmount;
   let managementFee = params.managementFee;
   let performanceFee = params.performanceFee;
-  let ribbonLendInterestEarned = params.ribbonLendInterestEarned;
+  let tbillsInterestEarned = params.tbillsInterestEarned;
   let loanTermLength = params.loanTermLength;
   let optionPurchaseFreq = params.optionPurchaseFreq;
   let loanAllocationPCT = params.loanAllocationPCT;
@@ -181,6 +186,8 @@ function behavesLikeRibbonOptionsVault(params: {
   let vault: Contract;
   let assetContract: Contract;
   let pauser: Contract;
+  let mm: Contract;
+  let mockOracle: Contract;
 
   describe(`${params.name}`, () => {
     let initSnapshotId: string;
@@ -210,7 +217,8 @@ function behavesLikeRibbonOptionsVault(params: {
     };
 
     const repayOption = async (amt: BigNumber = BigNumber.from("1")) => {
-      let newAmt = amt.eq(BigNumber.from("1")) ? ribbonLendInterestEarned : amt;
+      let newAmt = amt.eq(BigNumber.from("1")) ? tbillsInterestEarned : amt;
+
       if (newAmt.gt((await vault.allocationState()).optionAllocation)) {
         return;
       }
@@ -224,10 +232,25 @@ function behavesLikeRibbonOptionsVault(params: {
         .transfer(vault.address, interest);
     };
 
+    const settleSwap = async (assetAddress: string, assetOwner: string) => {
+      await network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: [assetOwner],
+      });
+
+      let assetOwnerSigner = await provider.getSigner(assetOwner);
+
+      let asset = await ethers.getContractAt("IERC20", assetAddress);
+
+      await asset.connect(assetOwnerSigner).transfer(mm.address, await mm.pendingSettledAssetAmount(assetAddress));
+      await mm.connect(assetOwnerSigner).settleTPlus0Transfer(assetAddress);
+    }
+
     const rollToNextRound = async (
       buyOption: boolean = true,
       repay: boolean = true,
-      rollFirst: boolean = true
+      rollFirst: boolean = true,
+      setOracle: boolean = true
     ) => {
       if (rollFirst) {
         await vault.connect(keeperSigner).rollToNextRound();
@@ -254,6 +277,11 @@ function behavesLikeRibbonOptionsVault(params: {
       if (!rollFirst) {
         await vault.connect(keeperSigner).rollToNextRound();
       }
+
+      if(setOracle){
+        // Increase product oracle price
+        await mockOracle.connect(ownerSigner).setAnswer((await mockOracle.connect(ownerSigner).price()).add(BIB01_ORACLE_BASE_ANSWER.div(100)));
+      }
     };
 
     before(async function () {
@@ -264,7 +292,7 @@ function behavesLikeRibbonOptionsVault(params: {
           {
             forking: {
               jsonRpcUrl: TEST_URI[chainId],
-              blockNumber: 15675168,
+              blockNumber: 17057501,
             },
           },
         ],
@@ -297,6 +325,27 @@ function behavesLikeRibbonOptionsVault(params: {
         "0x986aaa537b8cc170761FDAC6aC4fc7F9d8a20A8C"
       );
 
+      const MM = await getContractFactory("MM");
+      const MockAggregator = await getContractFactory("MockAggregator");
+
+      let tmpMM = await MM.connect(ownerSigner).deploy(USDC_ADDRESS[chainId]);
+      mockOracle = await MockAggregator.connect(ownerSigner).deploy(
+        8,
+        BIB01_ORACLE_BASE_ANSWER
+      );
+
+      await tmpMM
+        .connect(ownerSigner)
+        .setProduct(
+          BIB01_ADDRESS[chainId],
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
+          USDC_OWNER_ADDRESS[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          mockOracle.address,
+          true
+        );
+
       const VaultLifecycle = await ethers.getContractFactory(
         "VaultLifecycleEarn"
       );
@@ -309,6 +358,7 @@ function behavesLikeRibbonOptionsVault(params: {
           borrowers,
           borrowerWeights,
           optionSeller,
+          tmpMM.address,
           feeRecipient,
           managementFee,
           performanceFee,
@@ -348,6 +398,22 @@ function behavesLikeRibbonOptionsVault(params: {
           }
         )
       ).connect(userSigner);
+
+      mm = await MM.connect(ownerSigner).deploy(vault.address);
+
+      await mm
+        .connect(ownerSigner)
+        .setProduct(
+          BIB01_ADDRESS[chainId],
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
+          USDC_OWNER_ADDRESS[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          mockOracle.address,
+          true
+        );
+
+      await vault.connect(ownerSigner).setMM(mm.address);
 
       assetContract = await getContractAt(
         params.assetContractName,
@@ -402,20 +468,16 @@ function behavesLikeRibbonOptionsVault(params: {
         assert.equal(await vault.keeper(), keeper);
         assert.equal(await vault.feeRecipient(), feeRecipient);
         assert.equal(await vault.borrowers(0), borrower);
-        assert.equal(await vault.borrowers(1), borrowers[1]);
 
         assert.equal(
           (await vault.borrowerWeights(await vault.borrowers(0)))
             .pendingBorrowerWeight,
           borrowerWeights[0]
         );
-        assert.equal(
-          (await vault.borrowerWeights(await vault.borrowers(1)))
-            .pendingBorrowerWeight,
-          borrowerWeights[1]
-        );
+
         assert.equal(await vault.lastBorrowerBasketChange(), 0);
         assert.equal(await vault.optionSeller(), optionSeller);
+        assert.equal(await vault.mm(), mm.address);
 
         assert.equal(
           (await vault.managementFee()).toString(),
@@ -472,6 +534,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -507,6 +570,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -542,6 +606,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -568,6 +633,42 @@ function behavesLikeRibbonOptionsVault(params: {
         ).to.be.revertedWith("R7");
       });
 
+      it("reverts when initializing with 0 keeper", async function () {
+        await expect(
+          testVault.initialize(
+            [
+              owner,
+              keeper,
+              borrowers,
+              borrowerWeights,
+              optionSeller,
+              constants.AddressZero,
+              feeRecipient,
+              managementFee,
+              performanceFee,
+              tokenName,
+              tokenSymbol,
+            ],
+            [
+              tokenDecimals,
+              asset,
+              minimumSupply,
+              parseUnits("500", tokenDecimals > 18 ? tokenDecimals : 18),
+            ],
+            [
+              0,
+              0,
+              loanTermLength,
+              optionPurchaseFreq,
+              loanAllocationPCT,
+              optionAllocationPCT,
+              0,
+              0,
+            ]
+          )
+        ).to.be.revertedWith("R53");
+      });
+
       it("reverts when initializing with 0 feeRecipient", async function () {
         await expect(
           testVault.initialize(
@@ -577,6 +678,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               constants.AddressZero,
               managementFee,
               performanceFee,
@@ -610,8 +712,9 @@ function behavesLikeRibbonOptionsVault(params: {
               owner,
               keeper,
               borrowers,
-              [1],
+              [],
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -647,6 +750,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -677,6 +781,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -712,6 +817,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -747,6 +853,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -782,6 +889,7 @@ function behavesLikeRibbonOptionsVault(params: {
               borrowers,
               borrowerWeights,
               optionSeller,
+              mm.address,
               feeRecipient,
               managementFee,
               performanceFee,
@@ -938,7 +1046,7 @@ function behavesLikeRibbonOptionsVault(params: {
         let tx = await vault
           .connect(ownerSigner)
           .updateBorrowerBasket([ownerSigner.address], [100]);
-        assert.equal(await vault.borrowers(2), ownerSigner.address);
+        assert.equal(await vault.borrowers(1), ownerSigner.address);
         assert.equal(
           (await vault.borrowerWeights(ownerSigner.address)).exists,
           true
@@ -976,7 +1084,7 @@ function behavesLikeRibbonOptionsVault(params: {
             [100, 100]
           );
 
-        assert.equal(await vault.borrowers(2), ownerSigner.address);
+        assert.equal(await vault.borrowers(1), ownerSigner.address);
         assert.equal(
           (await vault.borrowerWeights(ownerSigner.address)).exists,
           true
@@ -991,7 +1099,7 @@ function behavesLikeRibbonOptionsVault(params: {
           100
         );
 
-        assert.equal(await vault.borrowers(3), userSigner.address);
+        assert.equal(await vault.borrowers(2), userSigner.address);
         assert.equal(
           (await vault.borrowerWeights(userSigner.address)).exists,
           true
@@ -1964,7 +2072,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         for (let i = 0; i < borrowers.length; i++) {
           balBefore.push(
-            BigNumber.from(await assetContract.balanceOf(borrowers[i]))
+            BigNumber.from(await assetContract.balanceOf((await mm.products(borrowers[i])).issueAddress))
           );
         }
 
@@ -1973,7 +2081,7 @@ function behavesLikeRibbonOptionsVault(params: {
         for (let i = 0; i < borrowers.length; i++) {
           // Loan allocation PCT of the vault's balance is allocated to loan
           assert.bnEqual(
-            (await assetContract.balanceOf(borrowers[i])).sub(balBefore[i]),
+            (await assetContract.balanceOf((await mm.products(borrowers[i])).issueAddress)).sub(balBefore[i]),
             (await vault.allocationState()).loanAllocation
               .mul(
                 (await vault.borrowerWeights(await vault.borrowers(i)))
@@ -1989,6 +2097,7 @@ function behavesLikeRibbonOptionsVault(params: {
         let newOptionPurchaseFrequency = 43200;
 
         await rollToNextRound();
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
         await vault.connect(ownerSigner).setLoanTermLength(newLoanTermLength);
         await vault
           .connect(ownerSigner)
@@ -2106,11 +2215,11 @@ function behavesLikeRibbonOptionsVault(params: {
       it("removes allocation to borrower with new basket update", async function () {
         await vault.connect(keeperSigner).rollToNextRound();
 
-        let totalBorrowerWeight = await vault.totalBorrowerWeight();
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(borrowers[0])).redeemAddress);
 
         await vault
           .connect(ownerSigner)
-          .updateBorrowerBasket([borrowers[0]], [0]);
+          .setAllocationPCT(0,0);
 
         // Time increase to next round
         await time.increaseTo(
@@ -2123,108 +2232,33 @@ function behavesLikeRibbonOptionsVault(params: {
           )
         );
 
-        let balBefore = await assetContract.balanceOf(borrowers[0]);
-        let lendPool = await getContractAt("IRibbonLend", borrowers[0]);
+        let issueAddress = (await mm.products(borrowers[0])).issueAddress;
 
-        let amountToWithdraw = (await lendPool.balanceOf(vault.address))
-          .sub(1)
-          .mul(await lendPool.getCurrentExchangeRate())
-          .div(BigNumber.from(10).pow(18));
+        let balBefore = await assetContract.balanceOf(issueAddress);
+        let product = await getContractAt("IERC20", borrowers[0]);
 
-        await vault.connect(keeperSigner).rollToNextRound();
-
-        let totalBorrowerWeight2 = await vault.totalBorrowerWeight();
-        let balAfter = await assetContract.balanceOf(borrowers[0]);
-        assert.equal(
-          totalBorrowerWeight.sub(totalBorrowerWeight2).toString(),
-          borrowerWeights[0].toString()
-        );
-
-        // Range to account for imprecisions with exchange rate multiplication
-        assert.bnGt(balBefore.sub(balAfter), amountToWithdraw);
-        assert.bnLt(
-          balBefore.sub(balAfter),
-          amountToWithdraw.mul(1001).div(1000)
-        );
-      });
-
-      it("withdraws RBN reward from ribbon lend", async function () {
-        let rbn = await getContractAt("IERC20", RBN_ADDRESS);
-        let ribbonLendFactory = await getContractAt(
-          "IRibbonLendFactory",
-          RIBBON_LEND_FACTORY
-        );
-
-        const rbnSigner = await ethers.provider.getSigner(RBN_OWNER_ADDRESS);
-
-        await network.provider.request({
-          method: "hardhat_impersonateAccount",
-          params: [RBN_OWNER_ADDRESS],
-        });
-
-        const factoryKeeperSigner = await ethers.provider.getSigner(
-          RIBBON_LEND_KEEPER
-        );
-
-        await network.provider.request({
-          method: "hardhat_impersonateAccount",
-          params: [RIBBON_LEND_KEEPER],
-        });
-
-        // Transfer RBN to lend factory
-        await rbn
-          .connect(rbnSigner)
-          .transfer(
-            ribbonLendFactory.address,
-            BigNumber.from("1000000").mul(BigNumber.from("10").pow(18))
-          );
-
-        // Set Pool Reward
-        await ribbonLendFactory
-          .connect(factoryKeeperSigner)
-          .setPoolRewardPerSecond(
-            borrowers[0],
-            BigNumber.from("1").mul(BigNumber.from("10").pow(15))
-          );
+        let amountToWithdraw = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)))
 
         await vault.connect(keeperSigner).rollToNextRound();
 
-        // Time increase to next round
-        await time.increaseTo(
-          (
-            await vault.vaultState()
-          ).lastEpochTime.add(
-            (
-              await vault.allocationState()
-            ).currentLoanTermLength
-          )
-        );
+        await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
 
-        let minterRBNBalanceBefore = await rbn.balanceOf(RIBBON_MINTER);
+        let balAfter = await assetContract.balanceOf(issueAddress);
 
-        await vault.connect(keeperSigner).rollToNextRound();
-
-        let minterRBNBalanceAfter = await rbn.balanceOf(RIBBON_MINTER);
-
-        assert.bnGt(minterRBNBalanceAfter, minterRBNBalanceBefore);
+        assert.bnEqual(balBefore.sub(balAfter), amountToWithdraw.mul(MM_TOTAL_PCT.sub((await mm.products(borrowers[0])).providerSpread)).div(MM_TOTAL_PCT));
       });
 
       it("withdraws and roll funds into next option, after bought options expiry ITM", async function () {
         await vault.connect(keeperSigner).rollToNextRound();
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
 
         // By the end - time increase to next round
         await buyAllOptions();
 
-        // Interest Earned on Ribbon Lend
-        let lendPool = await getContractAt("IRibbonLend", borrowers[0]);
-        let lendPool2 = await getContractAt("IRibbonLend", borrowers[1]);
+        // Interest Earned on product
+        let product = await getContractAt("IERC20", borrowers[0]);
 
-        let usdcBalLendPool1Before = (await lendPool.balanceOf(vault.address))
-          .mul(await lendPool.getCurrentExchangeRate())
-          .div(BigNumber.from(10).pow(18));
-        let usdcBalLendPool2Before = (await lendPool2.balanceOf(vault.address))
-          .mul(await lendPool2.getCurrentExchangeRate())
-          .div(BigNumber.from(10).pow(18));
+        let usdcProductBalBefore = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)))
 
         const beforeBalance = await vault.totalBalance();
 
@@ -2239,12 +2273,7 @@ function behavesLikeRibbonOptionsVault(params: {
           .connect(optionSellerSigner)
           ["payOptionYield(uint256)"](yieldAmount);
 
-        let usdcBalLendPool1After = (await lendPool.balanceOf(vault.address))
-          .mul(await lendPool.getCurrentExchangeRate())
-          .div(BigNumber.from(10).pow(18));
-        let usdcBalLendPool2After = (await lendPool2.balanceOf(vault.address))
-          .mul(await lendPool2.getCurrentExchangeRate())
-          .div(BigNumber.from(10).pow(18));
+        let usdcProductBalAfter = await mm.convertToUSDCAmount(product.address, (await product.balanceOf(vault.address)).add(await mm.pendingSettledAssetAmount(product.address)))
 
         const afterBalance = await vault.totalBalance();
 
@@ -2253,10 +2282,8 @@ function behavesLikeRibbonOptionsVault(params: {
           parseInt(
             yieldAmount
               .add(
-                usdcBalLendPool1After
-                  .add(usdcBalLendPool2After)
-                  .sub(usdcBalLendPool1Before)
-                  .sub(usdcBalLendPool2Before)
+                usdcProductBalBefore
+                  .sub(usdcProductBalAfter)
               )
               .toString()
           ),
@@ -2268,11 +2295,6 @@ function behavesLikeRibbonOptionsVault(params: {
           await lockedBalanceForRollover(vault);
 
         const secondInitialTotalBalance = await vault.totalBalance();
-
-        let exchangeRatePool1Before = await lendPool.getCurrentExchangeRate();
-        let exchangeRatePool2Before = await lendPool2.getCurrentExchangeRate();
-        let lendPool1Balance = await lendPool.balanceOf(vault.address);
-        let lendPool2Balance = await lendPool2.balanceOf(vault.address);
 
         await vault.connect(keeperSigner).rollToNextRound();
 
@@ -2291,48 +2313,19 @@ function behavesLikeRibbonOptionsVault(params: {
             .div(BigNumber.from(100).mul(BigNumber.from(10).pow(6)))
         );
 
-        let interestEarned = lendPool1Balance
-          .mul(
-            (await lendPool.getCurrentExchangeRate()).sub(
-              exchangeRatePool1Before
-            )
-          )
-          .div(BigNumber.from(10).pow(18));
-        interestEarned = interestEarned.add(
-          lendPool2Balance
-            .mul(
-              (await lendPool2.getCurrentExchangeRate()).sub(
-                exchangeRatePool2Before
-              )
-            )
-            .div(BigNumber.from(10).pow(18))
-        );
-
         const totalBalanceAfterFee = await vault.totalBalance();
 
-        // Range to account for imprecisions with exchange rate multiplication
-        assert.bnLt(
+        assert.equal(
           secondInitialTotalBalance
-            .sub(totalBalanceAfterFee)
-            .add(interestEarned),
-          vaultFees.mul(1001).div(1000)
+            .sub(totalBalanceAfterFee).toString(),
+          vaultFees.toString()
         );
 
-        assert.bnGt(
-          secondInitialTotalBalance
-            .sub(totalBalanceAfterFee)
-            .add(interestEarned),
-          vaultFees
-        );
+        let amtKept = (await vault.allocationState()).loanAllocation.sub(await mm.convertToUSDCAmount(borrowers[0], await product.balanceOf(vault.address)));
 
-        assert.bnLt(
-          await assetContract.balanceOf(vault.address),
-          (await vault.allocationState()).optionAllocation.mul(102).div(100)
-        );
-
-        assert.bnGt(
-          await assetContract.balanceOf(vault.address),
-          (await vault.allocationState()).optionAllocation
+        assert.bnEqual(
+          (await assetContract.balanceOf(vault.address)),
+          (await vault.allocationState()).optionAllocation.add(amtKept).add(1)
         );
       });
 
@@ -2345,6 +2338,8 @@ function behavesLikeRibbonOptionsVault(params: {
         );
 
         await vault.connect(keeperSigner).rollToNextRound();
+
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
 
         await vault
           .connect(ownerSigner)
@@ -2362,6 +2357,8 @@ function behavesLikeRibbonOptionsVault(params: {
         );
 
         await vault.connect(keeperSigner).rollToNextRound();
+
+        await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
 
         let [, queuedWithdrawAmountInitial] = await lockedBalanceForRollover(
           vault
@@ -2410,7 +2407,16 @@ function behavesLikeRibbonOptionsVault(params: {
 
         const secondInitialBalance = await vault.totalBalance();
 
+        let product = await getContractAt("IERC20", borrowers[0]);
+        let redeemAddress = (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress;
+
+        let redeemBalBefore = await product.balanceOf(redeemAddress);
         await vault.connect(keeperSigner).rollToNextRound();
+        await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
+
+        let redeemBalAfter = await product.balanceOf(redeemAddress);
+
+        let mmSpread = await mm.convertToUSDCAmount(BIB01_ADDRESS[chainId],redeemBalAfter.sub(redeemBalBefore).mul((await mm.products(borrowers[0])).providerSpread).div(MM_TOTAL_PCT));
 
         let vaultFees = secondInitialLockedBalance
           .add(queuedWithdrawAmount.sub(queuedWithdrawAmountInitial))
@@ -2427,28 +2433,24 @@ function behavesLikeRibbonOptionsVault(params: {
             .div(BigNumber.from(100).mul(BigNumber.from(10).pow(6)))
         );
 
-        // Do range to take into account imprecision with transfers to borrowers with weights and exchange rate
-        assert.bnGt(
-          secondInitialBalance.sub(await vault.totalBalance()),
-          vaultFees.mul(999).div(1000)
-        );
-
-        assert.bnLt(
-          secondInitialBalance.sub(await vault.totalBalance()),
-          vaultFees.mul(1001).div(1000)
+        assert.equal(
+          secondInitialBalance.sub(await vault.totalBalance()).toString(),
+          vaultFees.add(mmSpread).toString()
         );
       });
 
       it("does not debit the user on first deposit", async () => {
-        // totalBalance should remain the same before and after roll
         const startBalance = await vault.totalBalance();
         await vault.connect(keeperSigner).rollToNextRound();
 
-        // Take into account off by one imprecision when calculating earned amount
-        assert.bnEqual(await vault.totalBalance(), startBalance.sub(1));
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
+
+        let providerSpread = (await vault.allocationState()).loanAllocation.mul((await mm.products(borrowers[0])).providerSpread).div(MM_TOTAL_PCT);
+        assert.bnEqual(await vault.totalBalance(), startBalance.sub(providerSpread));
+
         assert.bnEqual(
           await vault.accountVaultBalance(user),
-          depositAmount.sub(BigNumber.from(10).pow(tokenDecimals - 1))
+          depositAmount
         );
 
         // simulate a profit by transferring some tokens
@@ -2456,7 +2458,6 @@ function behavesLikeRibbonOptionsVault(params: {
           .connect(userSigner)
           .transfer(vault.address, BigNumber.from(1));
 
-        // totalBalance should remain the same before and after roll
         const secondStartBalance = await vault.totalBalance();
 
         // By the end - time increase to next round
@@ -2612,7 +2613,9 @@ function behavesLikeRibbonOptionsVault(params: {
           .transfer(owner, params.depositAmount);
         await vault.connect(ownerSigner).deposit(params.depositAmount);
 
-        await rollToNextRound(true, true, false);
+        await rollToNextRound(true, true, false, false);
+
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
 
         // Mid-week deposit in round 2
         await vault.connect(userSigner).deposit(params.depositAmount);
@@ -2621,7 +2624,9 @@ function behavesLikeRibbonOptionsVault(params: {
 
         const beforePps = await vault.pricePerShare();
 
-        await rollToNextRound(true, false, false);
+        await rollToNextRound(true, false, false, false);
+
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
 
         const afterBalance = await vault.totalBalance();
         const afterPps = await vault.pricePerShare();
@@ -2883,9 +2888,13 @@ function behavesLikeRibbonOptionsVault(params: {
 
         await rollToNextRound();
 
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
+
         await vault.initiateWithdraw(depositAmount.div(2));
 
         await rollToNextRound();
+
+        await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
 
         await expect(
           vault.initiateWithdraw(depositAmount.div(2))
@@ -3558,13 +3567,11 @@ function behavesLikeRibbonOptionsVault(params: {
           .approve(vault.address, depositAmount);
         await vault.deposit(depositAmount);
         await rollToNextRound();
-        assert.bnLt(
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
+
+        assert.bnEqual(
           await vault.accountVaultBalance(user),
-          BigNumber.from(depositAmount).mul(1001).div(1000)
-        );
-        assert.bnGt(
-          await vault.accountVaultBalance(user),
-          BigNumber.from(depositAmount).mul(999).div(1000)
+          BigNumber.from(depositAmount)
         );
 
         await assetContract.connect(userSigner).transfer(owner, depositAmount);
@@ -3573,16 +3580,14 @@ function behavesLikeRibbonOptionsVault(params: {
           .approve(vault.address, depositAmount);
         await vault.connect(ownerSigner).deposit(depositAmount);
 
-        assert.bnLt(
+        assert.bnEqual(
           await vault.accountVaultBalance(user),
-          BigNumber.from(depositAmount).mul(1001).div(1000)
-        );
-        assert.bnGt(
-          await vault.accountVaultBalance(user),
-          BigNumber.from(depositAmount).mul(999).div(1000)
+          BigNumber.from(depositAmount)
         );
 
         await rollToNextRound(true, false);
+
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
 
         // Minus 1 due to rounding errors from share price != 1
         assert.bnLt(
@@ -3603,8 +3608,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
     if (chainId === CHAINID.ETH_MAINNET && params.mintConfig) {
       describe("pricePerShare checks", () => {
-        // Deposit 10000 tokens in the vault (5000 from user 0, 5000 from user 1)
-        const totalDepositAmount = parseUnits("10000", params.tokenDecimals);
+        const totalDepositAmount = parseUnits("100000", params.tokenDecimals);
         const depositAmount = totalDepositAmount.div(2); // 5000
 
         time.revertToSnapshotAfterEach(async () => {
@@ -3638,6 +3642,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
           assert.bnEqual(await vault.totalBalance(), totalDepositAmount); // 10000 tokens
           await rollToNextRound(); // Process deposits
+          await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
 
           assert.bnEqual(await vault.totalSupply(), totalDepositAmount); // 10000 shares
         });
@@ -3652,14 +3657,11 @@ function behavesLikeRibbonOptionsVault(params: {
             .add(100);
           await repayOption(furtherInterestEarned);
 
-          // Create range because of exchange rate imprecision
-          assert.bnLt(await vault.totalBalance(), totalDepositAmount); // 10000 tokens
-          assert.bnGt(
-            await vault.totalBalance(),
-            totalDepositAmount.mul(999).div(1000)
-          ); // 10000 tokens
+          assert.bnEqual(await vault.totalBalance(), totalDepositAmount); // 10000 tokens
 
           await rollToNextRound(); // Process withdraws
+          await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
+
           let furtherInterestEarned2 = (await vault.totalBalance())
             .add((await vault.allocationState()).optionAllocation)
             .sub(totalDepositAmount)
@@ -3669,14 +3671,9 @@ function behavesLikeRibbonOptionsVault(params: {
 
           /* ===== ROUND 3 ===== */
 
-          assert.bnLt(
+          assert.bnEqual(
             await vault.pricePerShare(),
-            parseUnits("1", params.tokenDecimals)
-          ); // pricePerShare == 1
-
-          assert.bnGt(
-            await vault.pricePerShare(),
-            parseUnits("1", params.tokenDecimals).mul(999).div(1000)
+            parseUnits("1", params.tokenDecimals).sub(1)
           ); // pricePerShare == 1
 
           // Transfer 50 tokens in premiums to vault
@@ -3698,11 +3695,16 @@ function behavesLikeRibbonOptionsVault(params: {
             await vault.totalBalance(),
             totalDepositAmount.add(premiumAmount)
           ); // 10050 tokens
+
           assert.bnGt(
             await vault.totalBalance(),
             totalDepositAmount.add(premiumAmount).mul(999).div(1000)
           ); // 10050 tokens
+
           await rollToNextRound(); // Process premiums/withdraws
+
+          await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
+
           assert.bnEqual(await vault.totalSupply(), totalDepositAmount); // 10000 shares
 
           /* ===== ROUND 4 ===== */
@@ -3724,7 +3726,7 @@ function behavesLikeRibbonOptionsVault(params: {
             await assetContract.balanceOf(ownerSigner.address)
           ).sub(withdrawnTokens0); // User 0 completes withdraw of 5000 shares
           // User 0 receives ~5038.063 tokens (5000 tokens + 38.063 premiums)
-          assert.bnGt(withdrawnTokens0, depositAmount.add(tenTokens.mul(3))); // withdrawnTokens0 > 5030 tokens
+          assert.bnGt(withdrawnTokens0, depositAmount.add(tenTokens.mul(2))); // withdrawnTokens0 > 5020 tokens
 
           let withdrawnTokens1 = await assetContract.balanceOf(
             userSigner.address
@@ -3733,8 +3735,7 @@ function behavesLikeRibbonOptionsVault(params: {
           withdrawnTokens1 = (
             await assetContract.balanceOf(userSigner.address)
           ).sub(withdrawnTokens1); // User 1 completes withdraw of 5000 shares
-          assert.bnLt(withdrawnTokens1, depositAmount); // User 1 receives 5000 tokens
-          assert.bnGt(withdrawnTokens1, depositAmount.mul(999).div(1000)); // User 1 receives 5000 tokens
+          assert.bnEqual(withdrawnTokens1, depositAmount); // User 1 receives 5000 tokens
 
           // Vault has ~0.000022 in tokens leftover
           assert.bnLt(await vault.totalBalance(), oneToken); // totalBalance < 1 tokens
@@ -3751,27 +3752,21 @@ function behavesLikeRibbonOptionsVault(params: {
             .add(100)
             .mul(2);
           await repayOption(furtherInterestEarned);
-          await rollToNextRound(false, false); // Process bought OTM expiry
-          /* ===== ROUND 3 ===== */
-          assert.bnLt(
-            await vault.pricePerShare(),
-            parseUnits("1", params.tokenDecimals)
-          ); // pricePerShare == 1
+          await rollToNextRound(false, false, true, false); // Process bought OTM expiry
+          await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
 
-          assert.bnGt(
+          /* ===== ROUND 3 ===== */
+          assert.bnEqual(
             await vault.pricePerShare(),
-            parseUnits("1", params.tokenDecimals).mul(999).div(1000)
+            parseUnits("1", params.tokenDecimals).sub(1)
           ); // pricePerShare == 1
 
           await vault.connect(ownerSigner).initiateWithdraw(depositAmount); // User 0 initiates 5000 share withdraw
 
-          assert.bnLt(await vault.totalBalance(), totalDepositAmount); // 10000 tokens
-          assert.bnGt(
-            await vault.totalBalance(),
-            totalDepositAmount.mul(999).div(1000)
-          ); // 10000 tokens
+          assert.bnEqual(await vault.totalBalance(), totalDepositAmount.sub(1)); // 10000 tokens
 
           await rollToNextRound();
+          await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
 
           assert.bnLt(await vault.totalBalance(), totalDepositAmount); // totalBalance < 10000 tokens
           assert.bnEqual(await vault.totalSupply(), totalDepositAmount); // 10000 shares
@@ -3804,8 +3799,7 @@ function behavesLikeRibbonOptionsVault(params: {
             .mul(roundPricePerShare)
             .div(parseUnits("1", params.tokenDecimals));
           // User 1 is expected to receive 5000 tokens when they complete withdraw 5000 shares
-          assert.bnLt(withdrawAmount, depositAmount); // 5000 tokens
-          assert.bnGt(withdrawAmount, depositAmount.mul(999).div(1000)); // 5000 tokens
+          assert.bnEqual(withdrawAmount, depositAmount); // 5000 tokens
 
           let withdrawnTokens1 = await assetContract.balanceOf(
             userSigner.address
@@ -3814,8 +3808,7 @@ function behavesLikeRibbonOptionsVault(params: {
           withdrawnTokens1 = (
             await assetContract.balanceOf(userSigner.address)
           ).sub(withdrawnTokens1); // User 1 completes withdraw of 5000 shares
-          assert.bnLt(withdrawnTokens1, depositAmount); // 5000 tokens
-          assert.bnGt(withdrawnTokens1, depositAmount.mul(999).div(1000)); // 5000 tokens
+          assert.bnEqual(withdrawnTokens1, depositAmount); // 5000 tokens
 
           // Vault has ~0.00004545 in tokens leftover
           assert.bnLt(await vault.totalBalance(), oneToken); // totalBalance < 1 tokens
@@ -3928,6 +3921,9 @@ function behavesLikeRibbonOptionsVault(params: {
 
         // Roll and Pause
         await rollToNextRound();
+
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
+
         await vault.pausePosition();
       });
 
@@ -3942,6 +3938,8 @@ function behavesLikeRibbonOptionsVault(params: {
       it("process withdrawal", async function () {
         // Roll again to process
         await rollToNextRound();
+
+        await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
 
         const pricePerShare = await vault.roundPricePerShare(2);
         const withdrawAmount = depositAmount
@@ -3980,6 +3978,8 @@ function behavesLikeRibbonOptionsVault(params: {
         it("process withdrawal and pause again", async function () {
           // Roll and Process
           await rollToNextRound();
+          await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
+
           await pauser.connect(keeperSigner).processWithdrawal(vault.address);
           // Deposit and Pause again
           await assetContract
@@ -4032,6 +4032,8 @@ function behavesLikeRibbonOptionsVault(params: {
         }
 
         await rollToNextRound();
+
+        await settleSwap(BIB01_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).redeemAddress);
       });
 
       it("unable to resume position without pause", async function () {
@@ -4053,6 +4055,8 @@ function behavesLikeRibbonOptionsVault(params: {
         await vault.pausePosition();
 
         await rollToNextRound();
+
+        await settleSwap(USDC_ADDRESS[chainId], (await mm.products(BIB01_ADDRESS[chainId])).issueAddress);
 
         await pauser.connect(keeperSigner).processWithdrawal(vault.address, {
           gasPrice,
@@ -4080,50 +4084,6 @@ function behavesLikeRibbonOptionsVault(params: {
         let position = await pauser.getPausePosition(vault.address, user);
         assert.equal(await position.round, 0);
         assert.bnEqual(await position.shares, BigNumber.from(0));
-      });
-    });
-
-    describe("#migrateToRibbonLendBorrowers", () => {
-      time.revertToSnapshotAfterEach();
-
-      it("revert if called by non-owner", async function () {
-        await expect(
-          vault.connect(userSigner).migrateToRibbonLendBorrowers()
-        ).to.be.revertedWith("Ownable: caller is not the owner");
-      });
-
-      it("removes fixed rate borrowers", async function () {
-        await vault
-          .connect(ownerSigner)
-          .updateBorrowerBasket(
-            [
-              "0xA1614eC01d13E04522ED0b085C7a178ED9E99bc9",
-              "0x44C8e19Bd59A8EA895fFf60DBB4e762028f2fb71",
-            ],
-            [100, 100]
-          );
-
-        let borrowerZeroBefore = await vault.borrowers(0);
-        let borrowerOneBefore = await vault.borrowers(1);
-
-        await vault.connect(ownerSigner).migrateToRibbonLendBorrowers();
-
-        assert.equal(
-          (await vault.borrowerWeights(borrowerZeroBefore)).exists,
-          false
-        );
-        assert.equal(
-          (await vault.borrowerWeights(borrowerOneBefore)).exists,
-          false
-        );
-        assert.equal(
-          await vault.borrowers(0),
-          "0x44C8e19Bd59A8EA895fFf60DBB4e762028f2fb71"
-        );
-        assert.equal(
-          await vault.borrowers(1),
-          "0xA1614eC01d13E04522ED0b085C7a178ED9E99bc9"
-        );
       });
     });
   });
