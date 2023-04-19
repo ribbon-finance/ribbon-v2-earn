@@ -1,22 +1,37 @@
 import { ethers, network } from "hardhat";
 import { objectEquals, parseLog, serializeMap } from "../helpers/utils";
 import deployments from "../../constants/deployments.json";
-import { BigNumberish, Contract } from "ethers";
+import { BigNumberish, Contract, constants } from "ethers";
 import * as time from "../helpers/time";
 import { assert } from "../helpers/assertions";
 import { BigNumber } from "ethereum-waffle/node_modules/ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { expect } from "chai";
 import { parseUnits } from "ethers/lib/utils";
-
+import {
+  BIB01_ADDRESS,
+  MM_SPREAD,
+  BIB01_PROVIDER_SPREAD,
+  USDC_OWNER_ADDRESS,
+  BORROWER_WEIGHTS,
+  BIB01_OWNER_ADDRESS,
+} from "../../constants/constants";
 const { parseEther } = ethers.utils;
+const { getContractFactory } = ethers;
 
 const UPGRADE_ADMIN = "0x223d59FA315D7693dF4238d1a5748c964E615923";
+const OWNER = "0x43a43D3404eaC5fA1ec4F4BB0879495D500e390b";
 const KEEPER = "0x55e4b3e3226444Cd4de09778844453bA9fe9cd7c";
 const IMPLEMENTATION_SLOT =
   "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
-const USER_ACCOUNT_1 = "0xd5d7Ec0C74c401835bD87820afC21B5a207D7eBC";
+const USER_ACCOUNT_1 = "0x2979eC1e53E1eE9238f52C83164E8F9DF03AD077";
 const USER_ACCOUNT_2 = "0xbE0AffE00De6BbdB717d2C7Af7f9fEB45311320d";
+
+const BIB01_ORACLE_BASE_ANSWER = BigNumber.from("100").mul(
+  BigNumber.from("10").pow("8")
+);
+
+const chainId = network.config.chainId;
 
 // UPDATE THESE VALUES BEFORE WE ATTEMPT AN UPGRADE
 const FORK_BLOCK = 17057501;
@@ -44,12 +59,32 @@ describe("RibbonEarnVault upgrade", () => {
 
     await userSigner.sendTransaction({
       to: UPGRADE_ADMIN,
-      value: parseEther("10"),
+      value: parseEther("1"),
+    });
+
+    await userSigner.sendTransaction({
+      to: USER_ACCOUNT_1,
+      value: parseEther("1"),
+    });
+
+    await userSigner.sendTransaction({
+      to: USER_ACCOUNT_2,
+      value: parseEther("1"),
     });
 
     await network.provider.request({
       method: "hardhat_impersonateAccount",
       params: [UPGRADE_ADMIN],
+    });
+
+    await network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [OWNER],
+    });
+
+    await userSigner.sendTransaction({
+      to: OWNER,
+      value: ethers.utils.parseEther("1"), // Sends exactly 1.0 ether
     });
 
     const deploymentNames = ["RibbonEarnVaultUSDC"];
@@ -65,11 +100,14 @@ function checkWithdrawal(vaultAddress: string) {
     let newImplementation: string;
     let vaultProxy: Contract;
     let vault: Contract;
+    let mockOracle: Contract;
+    let mm: Contract;
 
     time.revertToSnapshotAfterEach();
 
     before(async () => {
       const adminSigner = await ethers.provider.getSigner(UPGRADE_ADMIN);
+      const ownerSigner = await ethers.provider.getSigner(OWNER);
 
       vaultProxy = await ethers.getContractAt(
         "AdminUpgradeabilityProxy",
@@ -78,7 +116,9 @@ function checkWithdrawal(vaultAddress: string) {
       );
       vault = await ethers.getContractAt("RibbonEarnVault", vaultAddress);
 
-      const VaultLifecycle = await ethers.getContractFactory("VaultLifecycleEarn");
+      const VaultLifecycle = await ethers.getContractFactory(
+        "VaultLifecycleEarn"
+      );
       const vaultLifecycleLib = await VaultLifecycle.deploy();
 
       const RibbonEarnVault = await ethers.getContractFactory(
@@ -92,6 +132,14 @@ function checkWithdrawal(vaultAddress: string) {
 
       const newImplementationContract = await RibbonEarnVault.deploy();
       newImplementation = newImplementationContract.address;
+
+      const MM = await getContractFactory("MM");
+      const MockAggregator = await getContractFactory("MockAggregator");
+      mockOracle = await MockAggregator.connect(ownerSigner).deploy(
+        8,
+        BIB01_ORACLE_BASE_ANSWER
+      );
+      mm = await MM.connect(ownerSigner).deploy(vault.address);
     });
 
     describe("#completeWithdraw", () => {
@@ -128,6 +176,30 @@ function checkWithdrawal(vaultAddress: string) {
           "ILiquidityGauge",
           liquidityGaugeAddress
         );
+
+        let ownerSigner = await ethers.provider.getSigner(OWNER);
+
+        await mm
+          .connect(ownerSigner)
+          .setProduct(
+            BIB01_ADDRESS[chainId],
+            MM_SPREAD[chainId],
+            BIB01_PROVIDER_SPREAD[chainId],
+            USDC_OWNER_ADDRESS[chainId],
+            BIB01_OWNER_ADDRESS[chainId],
+            mockOracle.address,
+            true
+          );
+
+        let rWin = await vault.borrowers(0);
+
+        await vault
+          .connect(ownerSigner)
+          .updateBorrowerBasket(
+            [rWin, BIB01_ADDRESS[chainId]],
+            [0].concat(BORROWER_WEIGHTS[chainId])
+          );
+        await vault.connect(ownerSigner).setMM(mm.address);
       });
 
       it("withdraws the correct amount after upgrade", async () => {
@@ -194,7 +266,9 @@ function checkWithdrawal(vaultAddress: string) {
           .to.emit(vault, "Withdraw")
           .withArgs(
             account1.address,
-            initialAcc1ShareBalance.mul(pps).div(parseEther("1")),
+            initialAcc1ShareBalance
+              .mul(pps)
+              .div(BigNumber.from("10").pow(await vault.decimals())),
             initialAcc1ShareBalance
           );
 
@@ -202,7 +276,9 @@ function checkWithdrawal(vaultAddress: string) {
           .to.emit(vault, "Withdraw")
           .withArgs(
             account2.address,
-            initialAcc2ShareBalance.mul(pps).div(parseEther("1")),
+            initialAcc2ShareBalance
+              .mul(pps)
+              .div(BigNumber.from("10").pow(await vault.decimals())),
             initialAcc2ShareBalance
           );
 
@@ -234,11 +310,12 @@ function checkIfStorageNotCorrupted(vaultAddress: string) {
     "allocationState",
     "feeRecipient",
     "keeper",
+    "owner",
     "performanceFee",
     "managementFee",
-    "borrower",
-    "pendingBorrower",
-    "lastBorrowerChange",
+    "cap",
+    "currentQueuedWithdrawShares",
+    "lastBorrowerBasketChange",
     "optionSeller",
     "pendingOptionSeller",
     "lastOptionSellerChange",
@@ -260,6 +337,7 @@ function checkIfStorageNotCorrupted(vaultAddress: string) {
 
     before(async () => {
       const adminSigner = await ethers.provider.getSigner(UPGRADE_ADMIN);
+      const ownerSigner = await ethers.provider.getSigner(OWNER);
 
       vaultProxy = await ethers.getContractAt(
         "AdminUpgradeabilityProxy",
@@ -320,7 +398,7 @@ New: ${JSON.stringify(newVariables, null, 4)}`
         newVariables.map((varName) => vault[varName]())
       );
       for (let returnVal of variableReturns) {
-        assert.bnEqual(returnVal, BigNumber.from(0));
+        assert.equal(returnVal, constants.AddressZero);
       }
     });
 
