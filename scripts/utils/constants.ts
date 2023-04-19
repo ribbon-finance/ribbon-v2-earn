@@ -47,7 +47,7 @@ export const MM_SPREAD = {
 };
 
 export const PROVIDER_SPREAD = {
-  BIB01: 0, // 0 bps
+  BIB01: 4000, // 4000 bps
 };
 
 export const PERFORMANCE_FEE = 15000000; // 15% per year
