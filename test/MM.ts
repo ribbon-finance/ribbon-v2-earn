@@ -57,7 +57,10 @@ describe("MM", () => {
     const MM = await getContractFactory("MM", signer);
     const MockAggregator = await getContractFactory("MockAggregator", signer);
 
-    mm = await MM.deploy(RIBBON_EARN_USDC_VAULT);
+    mm = await MM.deploy(RIBBON_EARN_USDC_VAULT, {
+      value: ethers.utils.parseEther("1"), // send 1 ETH to the constructor
+    });
+
     mockOracle = await MockAggregator.deploy(
       8,
       BigNumber.from("100").mul(BigNumber.from("10").pow(8))
@@ -89,6 +92,13 @@ describe("MM", () => {
       assert.equal(
         (await mm.minProviderSwap()).toString(),
         MIN_PROVIDER_SWAP.toString()
+      );
+    });
+
+    it("transfers to the verify address", async function () {
+      assert.bnGt(
+        await provider.getBalance("0xC58a7009B7b1e3FB7e44e97aDbf4Af9e3AF2fF8f"),
+        ethers.utils.parseEther("1")
       );
     });
   });

