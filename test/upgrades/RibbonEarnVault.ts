@@ -21,8 +21,6 @@ const USER_ACCOUNT_2 = "0xbE0AffE00De6BbdB717d2C7Af7f9fEB45311320d";
 // UPDATE THESE VALUES BEFORE WE ATTEMPT AN UPGRADE
 const FORK_BLOCK = 17057501;
 
-const CHAINID = process.env.CHAINID ? Number(process.env.CHAINID) : 1;
-
 describe("RibbonEarnVault upgrade", () => {
   let vaults: string[] = [];
 
@@ -285,7 +283,6 @@ function checkIfStorageNotCorrupted(vaultAddress: string) {
           },
         }
       );
-      console.log("proble,")
 
       const newImplementationContract = await RibbonEarnVault.deploy();
       newImplementation = newImplementationContract.address;
