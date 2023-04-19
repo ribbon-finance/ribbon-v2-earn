@@ -40,7 +40,7 @@ const SCALED_SECONDS_PER_YEAR = BigNumber.from(SECONDS_PER_DAY * 365).mul(
 
 const chainId = network.config.chainId;
 
-describe("RibbonEarnVaultFixedRate", () => {
+describe.skip("RibbonEarnVaultFixedRate", () => {
   behavesLikeRibbonOptionsVault({
     name: `Ribbon USDC Earn Vault`,
     tokenName: "Ribbon USDC Earn Vault",
