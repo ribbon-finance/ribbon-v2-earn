@@ -43,6 +43,8 @@ const main = async ({
 
   const lifecycle = await deployments.get("VaultLifecycleEarn");
   const logicDeployment = await deployments.get("RibbonEarnVaultLogic");
+  const mm = await deployments.get("MM");
+
   const RibbonEarnVault = await ethers.getContractFactory("RibbonEarnVault", {
     libraries: {
       VaultLifecycleEarn: lifecycle.address,
@@ -59,6 +61,7 @@ const main = async ({
         BORROWER_WEIGHTS[BORROWERS.FOLKVANG],
       ],
       _optionSeller: OPTION_SELLER.ORBIT,
+      _mm: mm,
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
       _performanceFee: PERFORMANCE_FEE,
