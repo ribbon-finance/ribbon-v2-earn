@@ -1156,7 +1156,7 @@ contract RibbonEarnVault is
      * @notice Helper function that commits borrower basket
      */
     function _commitBorrowerBasket() internal {
-        require(block.timestamp >= (lastBorrowerBasketChange + 3 days), "R10");
+        require(block.timestamp >= (lastBorrowerBasketChange + 1 days), "R10");
 
         // Set current pending changes to basket of borrowers
         for (uint256 i = 0; i < borrowers.length; i++) {
