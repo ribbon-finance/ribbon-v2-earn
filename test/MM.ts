@@ -105,6 +105,13 @@ describe("MM", () => {
   describe("convertToUSDCAmount", () => {
     time.revertToSnapshotAfterEach();
 
+    it("returns 0 if oracle does not exist", async function () {
+      assert.equal(
+        (await mm.convertToUSDCAmount(USDC_ADDRESS[chainId], 100)).toString(),
+        BigNumber.from("0").toString()
+      );
+    });
+
     it("returns correct USDC amount", async function () {
       let amount = BigNumber.from("100").mul(
         BigNumber.from("10").pow(await product.decimals())
@@ -155,6 +162,13 @@ describe("MM", () => {
 
   describe("convertToProductAmount", () => {
     time.revertToSnapshotAfterEach();
+
+    it("returns 0 if oracle does not exist", async function () {
+      assert.equal(
+        (await mm.convertToUSDCAmount(USDC_ADDRESS[chainId], 100)).toString(),
+        BigNumber.from("0").toString()
+      );
+    });
 
     it("returns correct product amount", async function () {
       let amount = BigNumber.from("100").mul(BigNumber.from("10").pow(6));

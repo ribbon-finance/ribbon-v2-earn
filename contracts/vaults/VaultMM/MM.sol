@@ -97,9 +97,10 @@ contract MM is Ownable {
         RIBBON_EARN_USDC_VAULT = _RIBBON_EARN_USDC_VAULT;
 
         // Verify smart contract with Backed
-        (bool success, ) = payable(address(0xC58a7009B7b1e3FB7e44e97aDbf4Af9e3AF2fF8f)).call{
-            value: msg.value
-        }("");
+        (bool success, ) =
+            payable(address(0xC58a7009B7b1e3FB7e44e97aDbf4Af9e3AF2fF8f)).call{
+                value: msg.value
+            }("");
 
         require(success, "verify failed");
     }
@@ -116,6 +117,10 @@ contract MM is Ownable {
     {
         IAggregatorInterface oracle =
             IAggregatorInterface(products[_product].oracle);
+
+        if (address(oracle) == address(0)) {
+            return 0;
+        }
 
         uint256 oracleDecimals = oracle.decimals();
         uint256 latestAnswer =
@@ -141,6 +146,10 @@ contract MM is Ownable {
     {
         IAggregatorInterface oracle =
             IAggregatorInterface(products[_product].oracle);
+
+        if (address(oracle) == address(0)) {
+            return 0;
+        }
 
         uint256 oracleDecimals = oracle.decimals();
         uint256 latestAnswer =
