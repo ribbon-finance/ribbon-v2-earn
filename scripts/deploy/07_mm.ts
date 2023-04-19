@@ -1,8 +1,6 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import {
-  NETWORK_NAMES,
-} from "../../constants/constants";
+import { NETWORK_NAMES } from "../../constants/constants";
 
 const main = async ({
   network,
@@ -24,6 +22,7 @@ const main = async ({
     from: deployer,
     contract: "MM",
     args: constructorArguments,
+    value: "1",
   });
 
   console.log(`MM${networkName} @ ${mm.address}`);
