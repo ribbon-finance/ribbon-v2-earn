@@ -37,7 +37,7 @@ const BIB01_ORACLE_BASE_ANSWER = BigNumber.from("100").mul(
 const chainId = network.config.chainId;
 
 // UPDATE THESE VALUES BEFORE WE ATTEMPT AN UPGRADE
-const FORK_BLOCK = 17084660;
+const FORK_BLOCK = 17090475;
 
 describe("RibbonEarnVault upgrade", () => {
   let vaults: string[] = [];
@@ -186,19 +186,6 @@ function checkWithdrawal(vaultAddress: string) {
 
         let ownerSigner = await ethers.provider.getSigner(OWNER);
         let mmSigner = await ethers.provider.getSigner(MM);
-
-        // Set product
-        await mm
-          .connect(mmSigner)
-          .setProduct(
-            BIB01_ADDRESS[chainId],
-            MM_SPREAD[chainId],
-            BIB01_PROVIDER_SPREAD[chainId],
-            BORROWER_SWEEPER_ADDRESSES.BIB01.issue,
-            BORROWER_SWEEPER_ADDRESSES.BIB01.redeem,
-            BIB01_PRICE_ORACLE[chainId],
-            true
-          );
 
         // Set MM
         await vault.connect(ownerSigner).setMM(mm.address);
