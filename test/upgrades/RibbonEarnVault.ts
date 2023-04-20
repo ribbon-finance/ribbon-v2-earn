@@ -10,7 +10,6 @@ import { expect } from "chai";
 import { parseUnits } from "ethers/lib/utils";
 import { BIB01_ADDRESS, BORROWER_WEIGHTS } from "../../constants/constants";
 const { parseEther } = ethers.utils;
-const { getContractFactory } = ethers;
 
 const UPGRADE_ADMIN = "0x223d59FA315D7693dF4238d1a5748c964E615923";
 const OWNER = "0x43a43D3404eaC5fA1ec4F4BB0879495D500e390b";
