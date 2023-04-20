@@ -8,7 +8,7 @@ import { BigNumber } from "ethereum-waffle/node_modules/ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { expect } from "chai";
 import { parseUnits } from "ethers/lib/utils";
-import { BIB01_ADDRESS } from "../../constants/constants";
+import { BIB01_ADDRESS, BORROWER_WEIGHTS } from "../../constants/constants";
 const { parseEther } = ethers.utils;
 const { getContractFactory } = ethers;
 
@@ -20,10 +20,6 @@ const IMPLEMENTATION_SLOT =
   "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 const USER_ACCOUNT_1 = "0x2979eC1e53E1eE9238f52C83164E8F9DF03AD077";
 const USER_ACCOUNT_2 = "0xbE0AffE00De6BbdB717d2C7Af7f9fEB45311320d";
-
-const BIB01_ORACLE_BASE_ANSWER = BigNumber.from("100").mul(
-  BigNumber.from("10").pow("8")
-);
 
 const chainId = network.config.chainId;
 
