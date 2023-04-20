@@ -155,6 +155,10 @@ export const BORROWERS_FIXED_RATE = {
   [CHAINID.AVAX_FUJI]: [],
 };
 
+export const BORROWER_SWEEPER_ADDRESSES = {
+  BIB01: { issue: "0xdfb5a92cbd8ad817566bdc8abeaf8be0e4387472", redeem: "0x30f46f481a9e1576eb79114029a84bc0687174b0" },
+};
+
 export const BORROWER_WEIGHTS = {
   [CHAINID.ETH_MAINNET]: [100000],
   [CHAINID.ETH_KOVAN]: [100000],

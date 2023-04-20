@@ -15,12 +15,15 @@ import {
   USDC_OWNER_ADDRESS,
   BORROWER_WEIGHTS,
   BIB01_OWNER_ADDRESS,
+  BIB01_PRICE_ORACLE,
+  BORROWER_SWEEPER_ADDRESSES,
 } from "../../constants/constants";
 const { parseEther } = ethers.utils;
 const { getContractFactory } = ethers;
 
 const UPGRADE_ADMIN = "0x223d59FA315D7693dF4238d1a5748c964E615923";
 const OWNER = "0x43a43D3404eaC5fA1ec4F4BB0879495D500e390b";
+const MM = "0x349351261a5266e688807E949701e75F23d97f61";
 const KEEPER = "0x55e4b3e3226444Cd4de09778844453bA9fe9cd7c";
 const IMPLEMENTATION_SLOT =
   "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
@@ -34,7 +37,7 @@ const BIB01_ORACLE_BASE_ANSWER = BigNumber.from("100").mul(
 const chainId = network.config.chainId;
 
 // UPDATE THESE VALUES BEFORE WE ATTEMPT AN UPGRADE
-const FORK_BLOCK = 17057501;
+const FORK_BLOCK = 17084660;
 
 describe("RibbonEarnVault upgrade", () => {
   let vaults: string[] = [];
@@ -59,17 +62,27 @@ describe("RibbonEarnVault upgrade", () => {
 
     await userSigner.sendTransaction({
       to: UPGRADE_ADMIN,
-      value: parseEther("1"),
+      value: parseEther("10"),
+    });
+
+    await userSigner.sendTransaction({
+      to: OWNER,
+      value: parseEther("10"),
+    });
+
+    await userSigner.sendTransaction({
+      to: MM,
+      value: parseEther("10"),
     });
 
     await userSigner.sendTransaction({
       to: USER_ACCOUNT_1,
-      value: parseEther("1"),
+      value: parseEther("10"),
     });
 
     await userSigner.sendTransaction({
       to: USER_ACCOUNT_2,
-      value: parseEther("1"),
+      value: parseEther("10"),
     });
 
     await network.provider.request({
@@ -82,9 +95,9 @@ describe("RibbonEarnVault upgrade", () => {
       params: [OWNER],
     });
 
-    await userSigner.sendTransaction({
-      to: OWNER,
-      value: ethers.utils.parseEther("1"), // Sends exactly 1.0 ether
+    await network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [MM],
     });
 
     const deploymentNames = ["RibbonEarnVaultUSDC"];
@@ -133,13 +146,7 @@ function checkWithdrawal(vaultAddress: string) {
       const newImplementationContract = await RibbonEarnVault.deploy();
       newImplementation = newImplementationContract.address;
 
-      const MM = await getContractFactory("MM");
-      const MockAggregator = await getContractFactory("MockAggregator");
-      mockOracle = await MockAggregator.connect(ownerSigner).deploy(
-        8,
-        BIB01_ORACLE_BASE_ANSWER
-      );
-      mm = await MM.connect(ownerSigner).deploy(vault.address);
+      mm = await ethers.getContractAt("MM", deployments.mainnet.MM);
     });
 
     describe("#completeWithdraw", () => {
@@ -178,28 +185,36 @@ function checkWithdrawal(vaultAddress: string) {
         );
 
         let ownerSigner = await ethers.provider.getSigner(OWNER);
+        let mmSigner = await ethers.provider.getSigner(MM);
 
+        // Set product
         await mm
-          .connect(ownerSigner)
+          .connect(mmSigner)
           .setProduct(
             BIB01_ADDRESS[chainId],
             MM_SPREAD[chainId],
             BIB01_PROVIDER_SPREAD[chainId],
-            USDC_OWNER_ADDRESS[chainId],
-            BIB01_OWNER_ADDRESS[chainId],
-            mockOracle.address,
+            BORROWER_SWEEPER_ADDRESSES.BIB01.issue,
+            BORROWER_SWEEPER_ADDRESSES.BIB01.redeem,
+            BIB01_PRICE_ORACLE[chainId],
             true
           );
 
+        // Set MM
+        await vault.connect(ownerSigner).setMM(mm.address);
+
         let rWin = await vault.borrowers(0);
 
+        // Update borrower basket
         await vault
           .connect(ownerSigner)
           .updateBorrowerBasket(
             [rWin, BIB01_ADDRESS[chainId]],
             [0].concat(BORROWER_WEIGHTS[chainId])
           );
-        await vault.connect(ownerSigner).setMM(mm.address);
+
+        // Update option allocation
+        await vault.connect(ownerSigner).setAllocationPCT(45000, 0);
       });
 
       it("withdraws the correct amount after upgrade", async () => {
