@@ -8,16 +8,7 @@ import { BigNumber } from "ethereum-waffle/node_modules/ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { expect } from "chai";
 import { parseUnits } from "ethers/lib/utils";
-import {
-  BIB01_ADDRESS,
-  MM_SPREAD,
-  BIB01_PROVIDER_SPREAD,
-  USDC_OWNER_ADDRESS,
-  BORROWER_WEIGHTS,
-  BIB01_OWNER_ADDRESS,
-  BIB01_PRICE_ORACLE,
-  BORROWER_SWEEPER_ADDRESSES,
-} from "../../constants/constants";
+import { BIB01_ADDRESS } from "../../constants/constants";
 const { parseEther } = ethers.utils;
 const { getContractFactory } = ethers;
 
@@ -113,14 +104,12 @@ function checkWithdrawal(vaultAddress: string) {
     let newImplementation: string;
     let vaultProxy: Contract;
     let vault: Contract;
-    let mockOracle: Contract;
     let mm: Contract;
 
     time.revertToSnapshotAfterEach();
 
     before(async () => {
       const adminSigner = await ethers.provider.getSigner(UPGRADE_ADMIN);
-      const ownerSigner = await ethers.provider.getSigner(OWNER);
 
       vaultProxy = await ethers.getContractAt(
         "AdminUpgradeabilityProxy",
@@ -185,7 +174,6 @@ function checkWithdrawal(vaultAddress: string) {
         );
 
         let ownerSigner = await ethers.provider.getSigner(OWNER);
-        let mmSigner = await ethers.provider.getSigner(MM);
 
         // Set MM
         await vault.connect(ownerSigner).setMM(mm.address);
@@ -339,7 +327,6 @@ function checkIfStorageNotCorrupted(vaultAddress: string) {
 
     before(async () => {
       const adminSigner = await ethers.provider.getSigner(UPGRADE_ADMIN);
-      const ownerSigner = await ethers.provider.getSigner(OWNER);
 
       vaultProxy = await ethers.getContractAt(
         "AdminUpgradeabilityProxy",
