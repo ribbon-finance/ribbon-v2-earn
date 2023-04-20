@@ -50,5 +50,7 @@ export const PROVIDER_SPREAD = {
   BIB01: 4000, // 4000 bps
 };
 
+export const MIN_PROVIDER_SWAP = BigNumber.from("7500").mul(BigNumber.from("10").pow("6"));
+export const SET_PRODUCT_TIMELOCK = 604800 // 7 days
 export const PERFORMANCE_FEE = 15000000; // 15% per year
 export const MANAGEMENT_FEE = 0; // 0% per year

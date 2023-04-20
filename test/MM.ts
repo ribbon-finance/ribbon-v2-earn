@@ -18,6 +18,7 @@ const { provider, getContractAt, getContractFactory } = ethers;
 
 const TOTAL_PCT = BigNumber.from("1000000");
 const RIBBON_EARN_USDC_VAULT = "0x84c2b16FA6877a8fF4F3271db7ea837233DFd6f0";
+const SET_PRODUCT_TIMELOCK = BigNumber.from("604800");
 const MIN_PROVIDER_SWAP = BigNumber.from("7500").mul(
   BigNumber.from("10").pow("6")
 );
@@ -56,9 +57,14 @@ describe("MM", () => {
     const MM = await getContractFactory("MM", signer);
     const MockAggregator = await getContractFactory("MockAggregator", signer);
 
-    mm = await MM.deploy(RIBBON_EARN_USDC_VAULT, {
-      value: ethers.utils.parseEther("1"), // send 1 ETH to the constructor
-    });
+    mm = await MM.deploy(
+      RIBBON_EARN_USDC_VAULT,
+      SET_PRODUCT_TIMELOCK,
+      MIN_PROVIDER_SWAP,
+      {
+        value: ethers.utils.parseEther("1"), // send 1 ETH to the constructor
+      }
+    );
 
     mockOracle = await MockAggregator.deploy(
       8,
@@ -68,18 +74,6 @@ describe("MM", () => {
     product = await getContractAt("ERC20", BIB01_ADDRESS[chainId]);
 
     usdc = await getContractAt("ERC20", USDC_ADDRESS[chainId]);
-
-    await mm
-      .connect(signer)
-      .setProduct(
-        BIB01_ADDRESS[chainId],
-        MM_SPREAD[chainId],
-        BIB01_PROVIDER_SPREAD[chainId],
-        BIB01_OWNER_ADDRESS[chainId],
-        BIB01_OWNER_ADDRESS[chainId],
-        mockOracle.address,
-        true
-      );
   });
 
   describe("constructor", () => {
@@ -87,7 +81,14 @@ describe("MM", () => {
       assert.equal(await mm.RIBBON_EARN_USDC_VAULT(), RIBBON_EARN_USDC_VAULT);
     });
 
-    it("sets the minProviderSwap", async function () {
+    it("sets the SET_PRODUCT_TIMELOCK", async function () {
+      assert.equal(
+        (await mm.SET_PRODUCT_TIMELOCK()).toString(),
+        SET_PRODUCT_TIMELOCK.toString()
+      );
+    });
+
+    it("sets the SET_PRODUCT_TIMELOCK", async function () {
       assert.equal(
         (await mm.minProviderSwap()).toString(),
         MIN_PROVIDER_SWAP.toString()
@@ -104,6 +105,20 @@ describe("MM", () => {
 
   describe("convertToUSDCAmount", () => {
     time.revertToSnapshotAfterEach();
+
+    beforeEach(async function () {
+      await mm
+        .connect(signer)
+        .setProduct(
+          BIB01_ADDRESS[chainId],
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          mockOracle.address,
+          true
+        );
+    });
 
     it("returns 0 if oracle does not exist", async function () {
       assert.equal(
@@ -162,6 +177,20 @@ describe("MM", () => {
 
   describe("convertToProductAmount", () => {
     time.revertToSnapshotAfterEach();
+
+    beforeEach(async function () {
+      await mm
+        .connect(signer)
+        .setProduct(
+          BIB01_ADDRESS[chainId],
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          mockOracle.address,
+          true
+        );
+    });
 
     it("returns 0 if oracle does not exist", async function () {
       assert.equal(
@@ -357,6 +386,10 @@ describe("MM", () => {
       assert.equal(product[3], BIB01_OWNER_ADDRESS[chainId]);
       assert.equal(product[4], mockOracle.address);
       assert.equal(product[5], true);
+      assert.equal(
+        (await mm.lastSetProductTimestamp()).toString(),
+        BigNumber.from("0").toString()
+      );
 
       await expect(tx)
         .to.emit(mm, "ProductSet")
@@ -369,6 +402,20 @@ describe("MM", () => {
           mockOracle.address,
           true
         );
+
+      await mm
+        .connect(signer)
+        .setProduct(
+          BIB01_ADDRESS[chainId],
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          mockOracle.address,
+          true
+        );
+
+      assert.bnGt(await mm.lastSetProductTimestamp(), BigNumber.from("0"));
     });
   });
 
@@ -436,7 +483,51 @@ describe("MM", () => {
       ).to.be.revertedWith("!whitelisted");
     });
 
+    it("reverts when timelock not ended", async function () {
+      await mm.setProduct(
+        BIB01_ADDRESS[chainId],
+        MM_SPREAD[chainId],
+        BIB01_PROVIDER_SPREAD[chainId],
+        BIB01_OWNER_ADDRESS[chainId],
+        BIB01_OWNER_ADDRESS[chainId],
+        mockOracle.address,
+        true
+      );
+
+      await mm.setProduct(
+        BIB01_ADDRESS[chainId],
+        MM_SPREAD[chainId],
+        BIB01_PROVIDER_SPREAD[chainId],
+        BIB01_OWNER_ADDRESS[chainId],
+        BIB01_OWNER_ADDRESS[chainId],
+        mockOracle.address,
+        true
+      );
+
+      await expect(
+        mm
+          .connect(ribbonVaultSigner)
+          .swap(
+            BIB01_ADDRESS[chainId],
+            USDC_ADDRESS[chainId],
+            MIN_PROVIDER_SWAP.mul(BigNumber.from("10").pow("8")).div(
+              BASE_ORACLE_ANSWER
+            )
+          )
+      ).to.be.revertedWith("!SET_PRODUCT_TIMELOCK");
+    });
+
     it("reverts when min amount not provided", async function () {
+      await mm.setProduct(
+        BIB01_ADDRESS[chainId],
+        MM_SPREAD[chainId],
+        BIB01_PROVIDER_SPREAD[chainId],
+        BIB01_OWNER_ADDRESS[chainId],
+        BIB01_OWNER_ADDRESS[chainId],
+        mockOracle.address,
+        true
+      );
+
       await expect(
         mm
           .connect(ribbonVaultSigner)
@@ -477,6 +568,8 @@ describe("MM", () => {
         mockOracle.address,
         true
       );
+
+      await time.increase(SET_PRODUCT_TIMELOCK);
 
       let amountToSweeper = amountToSwap
         .mul(
@@ -585,6 +678,8 @@ describe("MM", () => {
         true
       );
 
+      await time.increase(SET_PRODUCT_TIMELOCK);
+
       let amountToSweeper = amountToSwap
         .mul(
           TOTAL_PCT.sub((await mm.products(BIB01_ADDRESS[chainId])).mmSpread)
@@ -661,6 +756,22 @@ describe("MM", () => {
 
   describe("settleTPlus0Transfer", () => {
     time.revertToSnapshotAfterEach();
+
+    beforeEach(async function () {
+      await mm
+        .connect(signer)
+        .setProduct(
+          BIB01_ADDRESS[chainId],
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          BIB01_OWNER_ADDRESS[chainId],
+          mockOracle.address,
+          true
+        );
+
+      await time.increase(SET_PRODUCT_TIMELOCK);
+    });
 
     it("reverts when amount to claim is 0", async function () {
       await expect(

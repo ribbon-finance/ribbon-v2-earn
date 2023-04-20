@@ -44,6 +44,9 @@ contract MM is Ownable {
     // Minimum amount in USDC for provider to accept issuance/redemption
     uint256 public minProviderSwap;
 
+    // Last time product was set
+    uint256 public lastSetProductTimestamp;
+
     /************************************************
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
@@ -54,8 +57,11 @@ contract MM is Ownable {
 
     uint256 public constant ORACLE_DIFF_THRESH_PCT = 100000; // Equals 10%
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+
     // Ribbon EARN USDC vault
     address public immutable RIBBON_EARN_USDC_VAULT;
+    // Minimum time between last product was set and swap
+    uint256 public immutable SET_PRODUCT_TIMELOCK;
 
     /************************************************
      *  EVENTS
@@ -86,15 +92,22 @@ contract MM is Ownable {
     /**
      * @notice Constructor
      * @param _RIBBON_EARN_USDC_VAULT is the Ribbon Earn USDC vault address
+     * @param _SET_PRODUCT_TIMELOCK is the minimum time between last product was set and swap
+     * @param _minProviderSwap is the min amount for swap
      */
-    constructor(address _RIBBON_EARN_USDC_VAULT) payable {
+    constructor(
+        address _RIBBON_EARN_USDC_VAULT,
+        uint256 _SET_PRODUCT_TIMELOCK,
+        uint256 _minProviderSwap
+    ) payable {
         require(
             _RIBBON_EARN_USDC_VAULT != address(0),
             "!_RIBBON_EARN_USDC_VAULT"
         );
-        // 7.5K USDC amount min
-        minProviderSwap = 7500 * 10**USDC_DECIMALS;
+
         RIBBON_EARN_USDC_VAULT = _RIBBON_EARN_USDC_VAULT;
+        SET_PRODUCT_TIMELOCK = _SET_PRODUCT_TIMELOCK;
+        minProviderSwap = _minProviderSwap;
 
         // Verify smart contract with Backed
         (bool success, ) =
@@ -200,6 +213,11 @@ contract MM is Ownable {
         require(_redeemAddress != address(0), "!_redeemAddress");
         require(_oracleAddress != address(0), "!_oracleAddress");
 
+        // If new product, set last product timestamp
+        if (products[_product].isWhitelisted) {
+            lastSetProductTimestamp = block.timestamp;
+        }
+
         products[_product] = Product(
             _mmSpread,
             _providerSpread,
@@ -234,6 +252,11 @@ contract MM is Ownable {
         require(
             msg.sender == RIBBON_EARN_USDC_VAULT,
             "!RIBBON_EARN_USDC_VAULT"
+        );
+
+        require(
+            block.timestamp >= lastSetProductTimestamp + SET_PRODUCT_TIMELOCK,
+            "!SET_PRODUCT_TIMELOCK"
         );
 
         address product = _fromAsset == USDC ? _toAsset : _fromAsset;

@@ -1,6 +1,8 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { NETWORK_NAMES } from "../../constants/constants";
+import { SET_PRODUCT_TIMELOCK, MIN_PROVIDER_SWAP } from "../utils/constants";
+
 import { BigNumber } from "ethers";
 
 const main = async ({
@@ -17,7 +19,11 @@ const main = async ({
 
   const ribbonEarnUSDCVault = await deployments.get("RibbonEarnVaultUSDC");
 
-  const constructorArguments = [ribbonEarnUSDCVault.address];
+  const constructorArguments = [
+    ribbonEarnUSDCVault.address,
+    SET_PRODUCT_TIMELOCK,
+    MIN_PROVIDER_SWAP,
+  ];
 
   const mm = await deploy(`MM`, {
     from: deployer,

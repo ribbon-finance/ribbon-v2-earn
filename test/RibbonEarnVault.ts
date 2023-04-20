@@ -328,7 +328,7 @@ function behavesLikeRibbonOptionsVault(params: {
       const MM = await getContractFactory("MM");
       const MockAggregator = await getContractFactory("MockAggregator");
 
-      let tmpMM = await MM.connect(ownerSigner).deploy(USDC_ADDRESS[chainId]);
+      let tmpMM = await MM.connect(ownerSigner).deploy(USDC_ADDRESS[chainId], BigNumber.from("1"), BigNumber.from("7500").mul(BigNumber.from("10").pow("6")));
       mockOracle = await MockAggregator.connect(ownerSigner).deploy(
         8,
         BIB01_ORACLE_BASE_ANSWER
@@ -399,7 +399,7 @@ function behavesLikeRibbonOptionsVault(params: {
         )
       ).connect(userSigner);
 
-      mm = await MM.connect(ownerSigner).deploy(vault.address);
+      mm = await MM.connect(ownerSigner).deploy(vault.address, BigNumber.from("1"), BigNumber.from("7500").mul(BigNumber.from("10").pow("6")));
 
       await mm
         .connect(ownerSigner)
@@ -1398,7 +1398,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
       it("changes the mm", async function () {
         await vault.connect(ownerSigner).setMM(owner);
-        assert.equal(await vault.setMM(), owner);
+        assert.equal(await vault.mm(), owner);
       });
     });
 
