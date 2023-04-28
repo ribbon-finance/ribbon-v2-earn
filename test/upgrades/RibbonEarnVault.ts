@@ -1,30 +1,31 @@
 import { ethers, network } from "hardhat";
-import { USDC_ADDRESS, WETH_ADDRESS } from "../../constants/constants";
 import { objectEquals, parseLog, serializeMap } from "../helpers/utils";
 import deployments from "../../constants/deployments.json";
-import { BigNumberish, Contract } from "ethers";
+import { BigNumberish, Contract, constants } from "ethers";
 import * as time from "../helpers/time";
 import { assert } from "../helpers/assertions";
 import { BigNumber } from "ethereum-waffle/node_modules/ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { expect } from "chai";
 import { parseUnits } from "ethers/lib/utils";
-
+import { BIB01_ADDRESS, BORROWER_WEIGHTS } from "../../constants/constants";
 const { parseEther } = ethers.utils;
 
 const UPGRADE_ADMIN = "0x223d59FA315D7693dF4238d1a5748c964E615923";
+const OWNER = "0x43a43D3404eaC5fA1ec4F4BB0879495D500e390b";
+const MM = "0x349351261a5266e688807E949701e75F23d97f61";
 const KEEPER = "0x55e4b3e3226444Cd4de09778844453bA9fe9cd7c";
 const IMPLEMENTATION_SLOT =
   "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
-const USER_ACCOUNT_1 = "0xbA304E6d2bBb7Bc84a247693E34Be1bed2e2cCc2";
-const USER_ACCOUNT_2 = "0xc9596e90ea2b30159889F1883077609eec048dB7";
+const USER_ACCOUNT_1 = "0x2979eC1e53E1eE9238f52C83164E8F9DF03AD077";
+const USER_ACCOUNT_2 = "0xbE0AffE00De6BbdB717d2C7Af7f9fEB45311320d";
+
+const chainId = network.config.chainId;
 
 // UPDATE THESE VALUES BEFORE WE ATTEMPT AN UPGRADE
-const FORK_BLOCK = 14972200;
+const FORK_BLOCK = 17090475;
 
-const CHAINID = process.env.CHAINID ? Number(process.env.CHAINID) : 1;
-
-describe.skip("RibbonEarnVault upgrade", () => {
+describe("RibbonEarnVault upgrade", () => {
   let vaults: string[] = [];
 
   before(async function () {
@@ -50,9 +51,39 @@ describe.skip("RibbonEarnVault upgrade", () => {
       value: parseEther("10"),
     });
 
+    await userSigner.sendTransaction({
+      to: OWNER,
+      value: parseEther("10"),
+    });
+
+    await userSigner.sendTransaction({
+      to: MM,
+      value: parseEther("10"),
+    });
+
+    await userSigner.sendTransaction({
+      to: USER_ACCOUNT_1,
+      value: parseEther("10"),
+    });
+
+    await userSigner.sendTransaction({
+      to: USER_ACCOUNT_2,
+      value: parseEther("10"),
+    });
+
     await network.provider.request({
       method: "hardhat_impersonateAccount",
       params: [UPGRADE_ADMIN],
+    });
+
+    await network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [OWNER],
+    });
+
+    await network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [MM],
     });
 
     const deploymentNames = ["RibbonEarnVaultUSDC"];
@@ -68,6 +99,7 @@ function checkWithdrawal(vaultAddress: string) {
     let newImplementation: string;
     let vaultProxy: Contract;
     let vault: Contract;
+    let mm: Contract;
 
     time.revertToSnapshotAfterEach();
 
@@ -81,23 +113,24 @@ function checkWithdrawal(vaultAddress: string) {
       );
       vault = await ethers.getContractAt("RibbonEarnVault", vaultAddress);
 
-      const VaultLifecycle = await ethers.getContractFactory("VaultLifecycle");
+      const VaultLifecycle = await ethers.getContractFactory(
+        "VaultLifecycleEarn"
+      );
       const vaultLifecycleLib = await VaultLifecycle.deploy();
 
       const RibbonEarnVault = await ethers.getContractFactory(
         "RibbonEarnVault",
         {
           libraries: {
-            VaultLifecycle: vaultLifecycleLib.address,
+            VaultLifecycleEarn: vaultLifecycleLib.address,
           },
         }
       );
 
-      const newImplementationContract = await RibbonEarnVault.deploy(
-        WETH_ADDRESS[CHAINID],
-        USDC_ADDRESS[CHAINID]
-      );
+      const newImplementationContract = await RibbonEarnVault.deploy();
       newImplementation = newImplementationContract.address;
+
+      mm = await ethers.getContractAt("MM", deployments.mainnet.MM);
     });
 
     describe("#completeWithdraw", () => {
@@ -134,6 +167,24 @@ function checkWithdrawal(vaultAddress: string) {
           "ILiquidityGauge",
           liquidityGaugeAddress
         );
+
+        let ownerSigner = await ethers.provider.getSigner(OWNER);
+
+        // Set MM
+        await vault.connect(ownerSigner).setMM(mm.address);
+
+        let rWin = await vault.borrowers(0);
+
+        // Update borrower basket
+        await vault
+          .connect(ownerSigner)
+          .updateBorrowerBasket(
+            [rWin, BIB01_ADDRESS[chainId]],
+            [0].concat(BORROWER_WEIGHTS[chainId])
+          );
+
+        // Update option allocation
+        await vault.connect(ownerSigner).setAllocationPCT(45000, 0);
       });
 
       it("withdraws the correct amount after upgrade", async () => {
@@ -165,7 +216,13 @@ function checkWithdrawal(vaultAddress: string) {
         assert.bnEqual(acc1ShareBalanceAfterInit, BigNumber.from(0));
         assert.bnEqual(acc2ShareBalanceAfterInit, BigNumber.from(0));
 
-        await vault.connect(keeper).rollToNextOption();
+        let newTime = (await vault.vaultState()).lastEpochTime.add(
+          BigNumber.from((await vault.allocationState()).currentLoanTermLength)
+        );
+
+        await time.increaseTo(newTime);
+
+        await vault.connect(keeper).rollToNextRound();
 
         // Get the initiate asset balance of the users
         const acc1AssetBalanceBefore = await account1.getBalance();
@@ -194,7 +251,9 @@ function checkWithdrawal(vaultAddress: string) {
           .to.emit(vault, "Withdraw")
           .withArgs(
             account1.address,
-            initialAcc1ShareBalance.mul(pps).div(parseEther("1")),
+            initialAcc1ShareBalance
+              .mul(pps)
+              .div(BigNumber.from("10").pow(await vault.decimals())),
             initialAcc1ShareBalance
           );
 
@@ -202,7 +261,9 @@ function checkWithdrawal(vaultAddress: string) {
           .to.emit(vault, "Withdraw")
           .withArgs(
             account2.address,
-            initialAcc2ShareBalance.mul(pps).div(parseEther("1")),
+            initialAcc2ShareBalance
+              .mul(pps)
+              .div(BigNumber.from("10").pow(await vault.decimals())),
             initialAcc2ShareBalance
           );
 
@@ -234,11 +295,12 @@ function checkIfStorageNotCorrupted(vaultAddress: string) {
     "allocationState",
     "feeRecipient",
     "keeper",
+    "owner",
     "performanceFee",
     "managementFee",
-    "borrower",
-    "pendingBorrower",
-    "lastBorrowerChange",
+    "cap",
+    "currentQueuedWithdrawShares",
+    "lastBorrowerBasketChange",
     "optionSeller",
     "pendingOptionSeller",
     "lastOptionSellerChange",
@@ -247,7 +309,7 @@ function checkIfStorageNotCorrupted(vaultAddress: string) {
     "currentQueuedWithdrawShares",
   ];
 
-  const newVariables = ["vaultPauser"];
+  const newVariables = ["vaultPauser", "mm"];
 
   let variables: Record<string, unknown> = {};
 
@@ -279,15 +341,12 @@ function checkIfStorageNotCorrupted(vaultAddress: string) {
         "RibbonEarnVault",
         {
           libraries: {
-            VaultLifecycle: vaultLifecycleLib.address,
+            VaultLifecycleEarn: vaultLifecycleLib.address,
           },
         }
       );
 
-      const newImplementationContract = await RibbonEarnVault.deploy(
-        WETH_ADDRESS[CHAINID],
-        USDC_ADDRESS[CHAINID]
-      );
+      const newImplementationContract = await RibbonEarnVault.deploy();
       newImplementation = newImplementationContract.address;
     });
 
@@ -323,7 +382,7 @@ New: ${JSON.stringify(newVariables, null, 4)}`
         newVariables.map((varName) => vault[varName]())
       );
       for (let returnVal of variableReturns) {
-        assert.bnEqual(returnVal, BigNumber.from(0));
+        assert.equal(returnVal, constants.AddressZero);
       }
     });
 

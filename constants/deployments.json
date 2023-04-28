@@ -3,6 +3,7 @@
       "RibbonVaultPauserKovan": "0xe446f8DD008d048eAeebd5fe8Ded53e71F68480b"
     },
     "mainnet": {
-        "RibbonEarnVaultUSDC": ""
+        "RibbonEarnVaultUSDC": "0x84c2b16FA6877a8fF4F3271db7ea837233DFd6f0",
+        "MM": "0x9af2b8088992419929c51b4cf62fa19bff247652"
     }
 }

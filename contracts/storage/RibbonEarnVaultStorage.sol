@@ -71,10 +71,18 @@ abstract contract RibbonEarnVaultStorageV1 {
     address public liquidityGauge;
 }
 
+abstract contract RibbonEarnVaultStorageV2 {
+    /// @notice Product mm
+    address public mm;
+}
+
 // We are following Compound's method of upgrading new contract implementations
 // When we need to add new storage variables, we create a new version of RibbonEarnVaultStorage
 // e.g. RibbonEarnVaultStorage<versionNumber>, so finally it would look like
 // contract RibbonEarnVaultStorage is RibbonEarnVaultStorageV1, RibbonEarnVaultStorageV2
-abstract contract RibbonEarnVaultStorage is RibbonEarnVaultStorageV1 {
+abstract contract RibbonEarnVaultStorage is
+    RibbonEarnVaultStorageV1,
+    RibbonEarnVaultStorageV2
+{
 
 }

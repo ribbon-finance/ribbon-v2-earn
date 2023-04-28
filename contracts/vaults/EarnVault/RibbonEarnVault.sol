@@ -26,8 +26,7 @@ import {VaultLifecycleEarn} from "../../libraries/VaultLifecycleEarn.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
 import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
-import {IRibbonLend} from "../../interfaces/IRibbonLend.sol";
-import {IRibbonLendFactory} from "../../interfaces/IRibbonLendFactory.sol";
+import {IMM} from "../../interfaces/IMM.sol";
 
 /**
  * Earn Vault Error Codes
@@ -81,6 +80,7 @@ import {IRibbonLendFactory} from "../../interfaces/IRibbonLendFactory.sol";
  * R50: loan pct + option pct == total PCT
  * R51: invalid pending option seller
  * R52: migrate called twice
+ * R53: invalid mm address
  */
 
 /**
@@ -138,6 +138,8 @@ contract RibbonEarnVault is
 
     event OptionSellerSet(address oldOptionSeller, address newOptionSeller);
 
+    event MMSet(address oldMM, address newMM);
+
     event NewAllocationSet(
         uint256 oldLoanAllocation,
         uint256 oldOptionAllocation,
@@ -189,6 +191,7 @@ contract RibbonEarnVault is
      * @param _borrowers is the addresses of the basket of borrowing entities (EX: Wintermute, GSR, Alameda, Genesis)
      * @param _borrowerWeights is the borrow weight of the addresses
      * @param _optionSeller is the address of the entity that we will be buying options from (EX: Orbit)
+     * @param _mm is the market maker that faciliates product swap
      * @param _managementFee is the management fee pct.
      * @param _performanceFee is the perfomance fee pct.
      * @param _tokenName is the name of the token
@@ -200,6 +203,7 @@ contract RibbonEarnVault is
         address[] _borrowers;
         uint128[] _borrowerWeights;
         address _optionSeller;
+        address _mm;
         address _feeRecipient;
         uint256 _managementFee;
         uint256 _performanceFee;
@@ -223,6 +227,7 @@ contract RibbonEarnVault is
         Vault.AllocationState calldata _allocationState
     ) external initializer {
         require(_initParams._owner != address(0), "R3");
+        require(_initParams._mm != address(0), "R53");
 
         VaultLifecycleEarn.verifyInitializerParams(
             _initParams._keeper,
@@ -246,6 +251,7 @@ contract RibbonEarnVault is
 
         feeRecipient = _initParams._feeRecipient;
         optionSeller = _initParams._optionSeller;
+        mm = _initParams._mm;
         performanceFee = _initParams._performanceFee;
         managementFee =
             (_initParams._managementFee * Vault.FEE_MULTIPLIER) /
@@ -334,6 +340,16 @@ contract RibbonEarnVault is
         emit OptionSellerSet(optionSeller, newOptionSeller);
         pendingOptionSeller = newOptionSeller;
         lastOptionSellerChange = block.timestamp;
+    }
+
+    /**
+     * @notice Sets the new mm
+     * @param newMM is the address of the new mm
+     */
+    function setMM(address newMM) external onlyOwner {
+        require(newMM != address(0), "R53");
+        emit MMSet(mm, newMM);
+        mm = newMM;
     }
 
     /**
@@ -834,28 +850,33 @@ contract RibbonEarnVault is
                     borrowerWeights[borrowers[i]].borrowerWeight) /
                     totalBorrowerWeight;
 
-            IRibbonLend lendPool = IRibbonLend(borrowers[i]);
-            uint256 currLendingPoolBalance = _lendingPoolBalance(lendPool);
+            IMM iMM = IMM(mm);
+            uint256 minProviderSwap = iMM.minProviderSwap();
 
-            // If we need to decrease loan allocation, exit Ribbon Lend Pool, otherwise allocate to pool
-            if (currLendingPoolBalance > amtToLendToBorrower) {
-                lendPool.redeemCurrency(
-                    currLendingPoolBalance - amtToLendToBorrower
-                );
-            } else if (amtToLendToBorrower > currLendingPoolBalance) {
+            uint256 productBalanceInUSDC = _productToUSDCBalance(borrowers[i]);
+
+            // If we need to decrease loan allocation, exit product, otherwise allocate to product
+            if (productBalanceInUSDC > amtToLendToBorrower + minProviderSwap) {
+                uint256 usdcToProductAmount =
+                    iMM.convertToProductAmount(
+                        borrowers[i],
+                        productBalanceInUSDC - amtToLendToBorrower
+                    );
+
+                IERC20(borrowers[i]).safeApprove(mm, usdcToProductAmount);
+                iMM.swap(borrowers[i], USDC, usdcToProductAmount);
+            } else if (amtToLendToBorrower > productBalanceInUSDC + minProviderSwap) {
                 IERC20(vaultParams.asset).safeApprove(
-                    borrowers[i],
-                    amtToLendToBorrower - currLendingPoolBalance
+                    mm,
+                    amtToLendToBorrower - productBalanceInUSDC
                 );
-                lendPool.provide(
-                    amtToLendToBorrower - currLendingPoolBalance,
-                    address(0)
+                iMM.swap(
+                    USDC,
+                    borrowers[i],
+                    amtToLendToBorrower - productBalanceInUSDC
                 );
             }
         }
-
-        // Withdraw RBN reward from Ribbon Lend and send to Gauge Minter
-        _withdrawRibbonLendRBNReward();
     }
 
     /**
@@ -1135,7 +1156,7 @@ contract RibbonEarnVault is
      * @notice Helper function that commits borrower basket
      */
     function _commitBorrowerBasket() internal {
-        require(block.timestamp >= (lastBorrowerBasketChange + 3 days), "R10");
+        require(block.timestamp >= (lastBorrowerBasketChange + 3 hours), "R10");
 
         // Set current pending changes to basket of borrowers
         for (uint256 i = 0; i < borrowers.length; i++) {
@@ -1155,57 +1176,31 @@ contract RibbonEarnVault is
         emit CommitBorrowerBasket(totalBorrowerWeight);
     }
 
-    /**
-     * @notice Withdraws the ribbon lend reward and transfers to gauge minter
-     */
-    function _withdrawRibbonLendRBNReward() internal {
-        uint256 borrowersLength = borrowers.length;
-
-        address[] memory pools = new address[](borrowersLength);
-
-        for (uint256 i = 0; i < borrowersLength; i++) {
-            pools[i] = borrowers[i];
-        }
-
-        // For every Ribbon Lend pool allocated to, withdraw RBN reward from
-        // ribbon lend factory
-        IRibbonLendFactory(0x312853485a41f76f20A14f927Cd0ea676588936C)
-            .withdrawReward(pools);
-
-        IERC20 RBN = IERC20(0x6123B0049F904d730dB3C36a31167D9d4121fA6B);
-        // Transfer RBN to minter
-        RBN.transfer(
-            0x5B0655F938A72052c46d2e94D206ccB6FF625A3A,
-            RBN.balanceOf(address(this))
-        );
-    }
-
-    function migrateToRibbonLendBorrowers() external onlyOwner {
-        for (uint256 i = 0; i < 2; i++) {
-            delete borrowerWeights[borrowers[i]];
-            borrowers[i] = borrowers[borrowers.length - 1];
-            borrowers.pop();
-        }
-    }
-
     /************************************************
      *  GETTERS
      ***********************************************/
 
     /**
-     * @notice Returns the Ribbon Earn vault balance in a Ribbon Lend Pool
-     * @param lendPool is the Ribbon Lend pool
-     * @return the amount of `asset` deposited into the lend pool
+     * @notice Returns the Ribbon Earn vault balance in a product
+     * @param product is the product held
+     * @return the amount of `asset` deposited into the product
      */
-    function _lendingPoolBalance(IRibbonLend lendPool)
+    function _productToUSDCBalance(address product)
         internal
         view
         returns (uint256)
     {
-        // Current exchange rate is 18-digits decimal
+        IMM imm = IMM(mm);
+        uint256 productBalance = IERC20(product).balanceOf(address(this));
+        // Include pending settled amount due to T+0 lag between issuance/redemption
+        uint256 pendingProductBalance =
+            imm.pendingSettledAssetAmount(product);
+
         return
-            (lendPool.balanceOf(address(this)) *
-                lendPool.getCurrentExchangeRate()) / 10**18;
+            imm.convertToUSDCAmount(
+                product,
+                productBalance + pendingProductBalance
+            );
     }
 
     /**
@@ -1288,14 +1283,14 @@ contract RibbonEarnVault is
         // Does not include funds allocated for options purchases
         // Includes funds set aside in vault that guarantee base yield
 
-        uint256 totalBalance =
+        uint256 _totalBalance =
             IERC20(vaultParams.asset).balanceOf(address(this));
 
         for (uint256 i = 0; i < borrowers.length; i++) {
-            totalBalance += _lendingPoolBalance(IRibbonLend(borrowers[i]));
+            _totalBalance += _productToUSDCBalance(borrowers[i]);
         }
 
-        return totalBalance;
+        return _totalBalance;
     }
 
     /**
