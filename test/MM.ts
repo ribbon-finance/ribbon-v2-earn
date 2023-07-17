@@ -5,6 +5,8 @@ import {
   BIB01_OWNER_ADDRESS,
   MM_SPREAD,
   BIB01_PROVIDER_SPREAD,
+  PLACEHOLDER_ADDR,
+  NULL_ADDR,
 } from "../constants/constants";
 import { expect } from "chai";
 import { constants, Contract } from "ethers";
@@ -26,6 +28,9 @@ const ORACLE_DIFF_THRESH_PCT = BigNumber.from("100000");
 const BASE_ORACLE_ANSWER = BigNumber.from("100").mul(
   BigNumber.from("10").pow("8")
 );
+const MM_PROXY = "0xDAeEA738e3D71C0FcB354c66101e9a0649Dc53e5";
+const DEST_USDC = "0xdfb5A92cBD8AD817566Bdc8ABEaF8BE0E4387472";
+const DEST_BIB01 = "0x30F46f481a9E1576eb79114029a84bc0687174B0";
 
 const chainId = network.config.chainId;
 
@@ -37,9 +42,10 @@ describe("MM", () => {
 
   let signer: SignerWithAddress;
   let signer2: SignerWithAddress;
+  let keeper: SignerWithAddress;
 
   before(async function () {
-    [signer, signer2] = await ethers.getSigners();
+    [signer, signer2, keeper] = await ethers.getSigners();
 
     // Reset block
     await network.provider.request({
@@ -61,6 +67,10 @@ describe("MM", () => {
       RIBBON_EARN_USDC_VAULT,
       SET_PRODUCT_TIMELOCK,
       MIN_PROVIDER_SWAP,
+      keeper.address,
+      MM_PROXY,
+      DEST_USDC,
+      DEST_BIB01,
       {
         value: ethers.utils.parseEther("1"), // send 1 ETH to the constructor
       }
@@ -74,9 +84,90 @@ describe("MM", () => {
     product = await getContractAt("ERC20", BIB01_ADDRESS[chainId]);
 
     usdc = await getContractAt("ERC20", USDC_ADDRESS[chainId]);
+
+    // fund accounts
+    await signer.sendTransaction({
+      to: MM_PROXY,
+      value: BigNumber.from("1").mul(BigNumber.from("10").pow(18)),
+    });
   });
 
   describe("constructor", () => {
+    it("reverts when vault address = address(0)", async function () {
+      const testMM = await getContractFactory("MM", signer);
+      await expect(
+        testMM.deploy(
+          NULL_ADDR,
+          SET_PRODUCT_TIMELOCK,
+          MIN_PROVIDER_SWAP,
+          keeper.address,
+          MM_PROXY,
+          DEST_USDC,
+          DEST_BIB01
+        )
+      ).to.be.revertedWith("!_RIBBON_EARN_USDC_VAULT");
+    });
+
+    it("reverts when keeper address = address(0)", async function () {
+      const testMM = await getContractFactory("MM", signer);
+      await expect(
+        testMM.deploy(
+          RIBBON_EARN_USDC_VAULT,
+          SET_PRODUCT_TIMELOCK,
+          MIN_PROVIDER_SWAP,
+          NULL_ADDR,
+          MM_PROXY,
+          DEST_USDC,
+          DEST_BIB01
+        )
+      ).to.be.revertedWith("!_keeper");
+    });
+
+    it("reverts when mm proxy address = address(0)", async function () {
+      const testMM = await getContractFactory("MM", signer);
+      await expect(
+        testMM.deploy(
+          RIBBON_EARN_USDC_VAULT,
+          SET_PRODUCT_TIMELOCK,
+          MIN_PROVIDER_SWAP,
+          keeper.address,
+          NULL_ADDR,
+          DEST_USDC,
+          DEST_BIB01
+        )
+      ).to.be.revertedWith("!_mmProxy");
+    });
+
+    it("reverts when destination USDC address = address(0)", async function () {
+      const testMM = await getContractFactory("MM", signer);
+      await expect(
+        testMM.deploy(
+          RIBBON_EARN_USDC_VAULT,
+          SET_PRODUCT_TIMELOCK,
+          MIN_PROVIDER_SWAP,
+          keeper.address,
+          MM_PROXY,
+          NULL_ADDR,
+          DEST_BIB01
+        )
+      ).to.be.revertedWith("!_destUSDC");
+    });
+
+    it("reverts when destination BIB01 address = address(0)", async function () {
+      const testMM = await getContractFactory("MM", signer);
+      await expect(
+        testMM.deploy(
+          RIBBON_EARN_USDC_VAULT,
+          SET_PRODUCT_TIMELOCK,
+          MIN_PROVIDER_SWAP,
+          keeper.address,
+          MM_PROXY,
+          DEST_USDC,
+          NULL_ADDR
+        )
+      ).to.be.revertedWith("!_destBIB01");
+    });
+
     it("sets RIBBON_EARN_USDC_VAULT", async function () {
       assert.equal(await mm.RIBBON_EARN_USDC_VAULT(), RIBBON_EARN_USDC_VAULT);
     });
@@ -88,10 +179,32 @@ describe("MM", () => {
       );
     });
 
-    it("sets the SET_PRODUCT_TIMELOCK", async function () {
+    it("sets the minimum provider swap", async function () {
       assert.equal(
         (await mm.minProviderSwap()).toString(),
         MIN_PROVIDER_SWAP.toString()
+      );
+    });
+
+    it("sets the keeper", async function () {
+      assert.equal((await mm.keeper()).toString(), keeper.address);
+    });
+
+    it("sets the MM proxy", async function () {
+      assert.equal((await mm.mmProxy()).toString(), MM_PROXY);
+    });
+
+    it("sets the USDC destination", async function () {
+      assert.equal(
+        (await mm.dest(USDC_ADDRESS[chainId])).toString(),
+        DEST_USDC
+      );
+    });
+
+    it("sets the BIB01 destination", async function () {
+      assert.equal(
+        (await mm.dest(BIB01_ADDRESS[chainId])).toString(),
+        DEST_BIB01
       );
     });
 
@@ -419,6 +532,83 @@ describe("MM", () => {
     });
   });
 
+  describe("setMMProxy", () => {
+    time.revertToSnapshotAfterEach();
+
+    it("reverts when not owner call", async function () {
+      await expect(
+        mm.connect(signer2).setMMProxy(PLACEHOLDER_ADDR)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("reverts when mm proxy address = address(0)", async function () {
+      await expect(mm.setMMProxy(NULL_ADDR)).to.be.revertedWith("!_mmProxy");
+    });
+
+    it("sets the MM proxy", async function () {
+      let tx = await mm.setMMProxy(PLACEHOLDER_ADDR);
+      assert.equal(await mm.mmProxy(), PLACEHOLDER_ADDR);
+
+      await expect(tx)
+        .to.emit(mm, "MMProxySet")
+        .withArgs(MM_PROXY, PLACEHOLDER_ADDR);
+    });
+  });
+
+  describe("setDest", () => {
+    time.revertToSnapshotAfterEach();
+
+    it("reverts when not owner call", async function () {
+      await expect(
+        mm.connect(signer2).setDest(PLACEHOLDER_ADDR, PLACEHOLDER_ADDR)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("reverts when token or dest addresses = address(0)", async function () {
+      await expect(mm.setDest(NULL_ADDR, PLACEHOLDER_ADDR)).to.be.revertedWith(
+        "!_token"
+      );
+      await expect(mm.setDest(PLACEHOLDER_ADDR, NULL_ADDR)).to.be.revertedWith(
+        "!_dest"
+      );
+    });
+
+    it("sets the USDC destination", async function () {
+      let tx = await mm.setDest(USDC_ADDRESS[chainId], PLACEHOLDER_ADDR);
+      assert.equal(
+        (await mm.dest(USDC_ADDRESS[chainId])).toString(),
+        PLACEHOLDER_ADDR
+      );
+
+      await expect(tx)
+        .to.emit(mm, "DestSet")
+        .withArgs(USDC_ADDRESS[chainId], DEST_USDC, PLACEHOLDER_ADDR);
+    });
+  });
+
+  describe("setKeeper", () => {
+    time.revertToSnapshotAfterEach();
+
+    it("reverts when not owner call", async function () {
+      await expect(
+        mm.connect(signer2).setKeeper(PLACEHOLDER_ADDR)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("reverts when keeper address = address(0)", async function () {
+      await expect(mm.setKeeper(NULL_ADDR)).to.be.revertedWith("!_keeper");
+    });
+
+    it("sets the keeper", async function () {
+      let tx = await mm.setKeeper(PLACEHOLDER_ADDR);
+      assert.equal(await mm.keeper(), PLACEHOLDER_ADDR);
+
+      await expect(tx)
+        .to.emit(mm, "KeeperSet")
+        .withArgs(keeper.address, PLACEHOLDER_ADDR);
+    });
+  });
+
   describe("swap", () => {
     time.revertToSnapshotAfterEach();
 
@@ -633,6 +823,18 @@ describe("MM", () => {
         amountOut.toString()
       );
 
+      // pending sale asset amount increases
+      assert.equal(
+        (await mm.pendingSaleAssetAmount(USDC_ADDRESS[chainId])).toString(),
+        amountToSwap.toString()
+      );
+
+      // pending sale asset is updated
+      assert.equal(
+        (await mm.pendingSaleAsset()).toString(),
+        USDC_ADDRESS[chainId]
+      );
+
       // event emitted
       await expect(tx)
         .to.emit(mm, "ProductSwapped")
@@ -742,6 +944,18 @@ describe("MM", () => {
         amountOut.toString()
       );
 
+      // pending sale asset amount increases
+      assert.equal(
+        (await mm.pendingSaleAssetAmount(BIB01_ADDRESS[chainId])).toString(),
+        amountToSwap.toString()
+      );
+
+      // pending sale asset is updated
+      assert.equal(
+        (await mm.pendingSaleAsset()).toString(),
+        BIB01_ADDRESS[chainId]
+      );
+
       // event emitted
       await expect(tx)
         .to.emit(mm, "ProductSwapped")
@@ -754,18 +968,33 @@ describe("MM", () => {
     });
   });
 
-  describe("settleTPlus0Transfer", () => {
+  describe("initiatePurchase", () => {
     time.revertToSnapshotAfterEach();
 
+    let ribbonVaultSigner;
+    let mmProxySigner;
+
     beforeEach(async function () {
+      await network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: [RIBBON_EARN_USDC_VAULT],
+      });
+      await network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: [MM_PROXY],
+      });
+
+      ribbonVaultSigner = await provider.getSigner(RIBBON_EARN_USDC_VAULT);
+      mmProxySigner = await provider.getSigner(MM_PROXY);
+
       await mm
         .connect(signer)
         .setProduct(
           BIB01_ADDRESS[chainId],
           MM_SPREAD[chainId],
           BIB01_PROVIDER_SPREAD[chainId],
-          BIB01_OWNER_ADDRESS[chainId],
-          BIB01_OWNER_ADDRESS[chainId],
+          MM_PROXY,
+          MM_PROXY,
           mockOracle.address,
           true
         );
@@ -773,9 +1002,182 @@ describe("MM", () => {
       await time.increase(SET_PRODUCT_TIMELOCK);
     });
 
+    it("reverts when not the keeper", async function () {
+      await expect(
+        mm.initiatePurchase(USDC_ADDRESS[chainId])
+      ).to.be.revertedWith("!keeper");
+    });
+
+    it("initiates the purchase of USDC", async function () {
+      // swap occurs
+      let amountToSwap = BigNumber.from("100000").mul(
+        BigNumber.from("10").pow("6")
+      );
+
+      await usdc.connect(ribbonVaultSigner).approve(mm.address, amountToSwap);
+
+      await mm
+        .connect(ribbonVaultSigner)
+        .swap(USDC_ADDRESS[chainId], BIB01_ADDRESS[chainId], amountToSwap);
+
+      // mmProxy approves MM contract
+      await usdc.connect(mmProxySigner).approve(mm.address, amountToSwap);
+
+      // initiates purchase
+      let mmProxyUSDCBalBefore = await usdc.balanceOf(MM_PROXY);
+      let destUSDCBalBefore = await usdc.balanceOf(DEST_USDC);
+      let pendingSaleAssetAmountBefore = await mm.pendingSaleAssetAmount(
+        USDC_ADDRESS[chainId]
+      );
+
+      let pendingSaleAsset = await mm.pendingSaleAsset();
+
+      let tx = await mm.connect(keeper).initiatePurchase(pendingSaleAsset);
+
+      let mmProxyUSDCBalAfter = await usdc.balanceOf(MM_PROXY);
+      let destUSDCBalAfter = await usdc.balanceOf(DEST_USDC);
+      let pendingSaleAssetAmountAfter = await mm.pendingSaleAssetAmount(
+        USDC_ADDRESS[chainId]
+      );
+
+      assert.equal(
+        mmProxyUSDCBalBefore.sub(mmProxyUSDCBalAfter).toString(),
+        amountToSwap
+      );
+
+      assert.equal(
+        destUSDCBalAfter.sub(destUSDCBalBefore).toString(),
+        amountToSwap
+      );
+
+      assert.equal(
+        pendingSaleAssetAmountBefore
+          .sub(pendingSaleAssetAmountAfter)
+          .toString(),
+        amountToSwap
+      );
+
+      assert.equal(pendingSaleAssetAmountAfter, 0);
+
+      // event emitted
+      await expect(tx)
+        .to.emit(mm, "InitiatedPurchase")
+        .withArgs(USDC_ADDRESS[chainId], pendingSaleAssetAmountBefore);
+    });
+    it("initiates the purchase of BIB01", async function () {
+      // swap occurs
+      await network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: [BIB01_OWNER_ADDRESS[chainId]],
+      });
+
+      let productOwnerSigner = await provider.getSigner(
+        BIB01_OWNER_ADDRESS[chainId]
+      );
+
+      let amountToSwap = BigNumber.from("100").mul(
+        BigNumber.from("10").pow("18")
+      );
+
+      await product
+        .connect(productOwnerSigner)
+        .transfer(RIBBON_EARN_USDC_VAULT, amountToSwap);
+
+      await product
+        .connect(ribbonVaultSigner)
+        .approve(mm.address, amountToSwap);
+
+      await product
+        .connect(ribbonVaultSigner)
+        .approve(mm.address, amountToSwap);
+
+      await mm
+        .connect(ribbonVaultSigner)
+        .swap(BIB01_ADDRESS[chainId], USDC_ADDRESS[chainId], amountToSwap);
+
+      // mmProxy approves MM contract
+      await product.connect(mmProxySigner).approve(mm.address, amountToSwap);
+
+      // initiates purchase
+      let mmProxyProductBalBefore = await product.balanceOf(MM_PROXY);
+      let destProductBalBefore = await product.balanceOf(DEST_BIB01);
+      let pendingSaleAssetAmountBefore = await mm.pendingSaleAssetAmount(
+        BIB01_ADDRESS[chainId]
+      );
+
+      let pendingSaleAsset = await mm.pendingSaleAsset();
+
+      let tx = await mm.connect(keeper).initiatePurchase(pendingSaleAsset);
+
+      let mmProxyProductBalAfter = await product.balanceOf(MM_PROXY);
+      let destProductBalAfter = await product.balanceOf(DEST_BIB01);
+      let pendingSaleAssetAmountAfter = await mm.pendingSaleAssetAmount(
+        BIB01_ADDRESS[chainId]
+      );
+
+      assert.equal(
+        mmProxyProductBalBefore.sub(mmProxyProductBalAfter).toString(),
+        amountToSwap
+      );
+
+      assert.equal(
+        destProductBalAfter.sub(destProductBalBefore).toString(),
+        amountToSwap
+      );
+
+      assert.equal(
+        pendingSaleAssetAmountBefore
+          .sub(pendingSaleAssetAmountAfter)
+          .toString(),
+        amountToSwap
+      );
+
+      assert.equal(pendingSaleAssetAmountAfter, 0);
+
+      // event emitted
+      await expect(tx)
+        .to.emit(mm, "InitiatedPurchase")
+        .withArgs(BIB01_ADDRESS[chainId], pendingSaleAssetAmountBefore);
+    });
+  });
+
+  describe("settlePurchase", () => {
+    time.revertToSnapshotAfterEach();
+
+    let mmProxySigner;
+
+    beforeEach(async function () {
+      await network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: [MM_PROXY],
+      });
+
+      mmProxySigner = await provider.getSigner(MM_PROXY);
+
+      await mm
+        .connect(signer)
+        .setProduct(
+          BIB01_ADDRESS[chainId],
+          MM_SPREAD[chainId],
+          BIB01_PROVIDER_SPREAD[chainId],
+          MM_PROXY,
+          MM_PROXY,
+          mockOracle.address,
+          true
+        );
+
+      await time.increase(SET_PRODUCT_TIMELOCK);
+    });
+
+    it("reverts when not the keeper", async function () {
+      await expect(
+        mm.settlePurchase(BIB01_ADDRESS[chainId])
+      ).to.be.revertedWith("!keeper");
+    });
+
     it("reverts when amount to claim is 0", async function () {
       await expect(
-        mm.settleTPlus0Transfer(BIB01_ADDRESS[chainId])
+        mm.connect(keeper).settlePurchase(BIB01_ADDRESS[chainId])
       ).to.be.revertedWith("!amtToSettle > 0");
     });
 
@@ -813,18 +1215,33 @@ describe("MM", () => {
         BIB01_ADDRESS[chainId]
       );
 
-      // transfers to ribbon earn vault
-      await product.connect(productOwnerSigner).transfer(mm.address, amountOut);
+      // keeper calls initiate purchase
+      await product
+        .connect(mmProxySigner)
+        .approve(mm.address, ethers.constants.MaxUint256);
+      await usdc
+        .connect(mmProxySigner)
+        .approve(mm.address, ethers.constants.MaxUint256);
 
+      let pendingSaleAsset = await mm.pendingSaleAsset();
+
+      await mm.connect(keeper).initiatePurchase(pendingSaleAsset);
+
+      // transfers to MM Proxy
+      await product.connect(productOwnerSigner).transfer(MM_PROXY, amountOut);
+
+      // keeper calls settle purchase
       let ribbonVaultProductBalBefore = await product.balanceOf(
         RIBBON_EARN_USDC_VAULT
       );
+      let mmProxyProductBalBefore = await product.balanceOf(MM_PROXY);
 
-      let tx = await mm.settleTPlus0Transfer(BIB01_ADDRESS[chainId]);
+      let tx = await mm.connect(keeper).settlePurchase(BIB01_ADDRESS[chainId]);
 
       let ribbonVaultProductBalAfter = await product.balanceOf(
         RIBBON_EARN_USDC_VAULT
       );
+      let mmProxyProductBalAfter = await product.balanceOf(MM_PROXY);
 
       assert.equal(
         (await mm.pendingSettledAssetAmount(BIB01_ADDRESS[chainId])).toString(),
@@ -832,6 +1249,10 @@ describe("MM", () => {
       );
       assert.equal(
         ribbonVaultProductBalAfter.sub(ribbonVaultProductBalBefore).toString(),
+        amountOut.toString()
+      );
+      assert.equal(
+        mmProxyProductBalBefore.sub(mmProxyProductBalAfter).toString(),
         amountOut.toString()
       );
 
@@ -842,7 +1263,7 @@ describe("MM", () => {
 
       // Check if product directly transferred
       await product.connect(productOwnerSigner).transfer(mm.address, 1);
-      await mm.settleTPlus0Transfer(BIB01_ADDRESS[chainId]);
+      await mm.connect(keeper).settlePurchase(BIB01_ADDRESS[chainId]);
       assert.equal(
         (await mm.pendingSettledAssetAmount(BIB01_ADDRESS[chainId])).toString(),
         0
