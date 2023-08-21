@@ -530,7 +530,7 @@ contract RibbonEarnVault is
      * @notice Deposits the `asset` from msg.sender.
      * @param amount is the amount of `asset` to deposit
      */
-    function deposit(uint256 amount) external nonReentrant {
+/*     function deposit(uint256 amount) external nonReentrant {
         require(amount > 0, "R21");
 
         _depositFor(amount, msg.sender);
@@ -541,7 +541,7 @@ contract RibbonEarnVault is
             address(this),
             amount
         );
-    }
+    } */
 
     /**
      * @notice Deposits the `asset` from msg.sender added to `creditor`'s deposit.
@@ -549,7 +549,7 @@ contract RibbonEarnVault is
      * @param amount is the amount of `asset` to deposit
      * @param creditor is the address that can claim/withdraw deposited amount
      */
-    function depositFor(uint256 amount, address creditor)
+/*     function depositFor(uint256 amount, address creditor)
         external
         nonReentrant
     {
@@ -564,7 +564,7 @@ contract RibbonEarnVault is
             address(this),
             amount
         );
-    }
+    }  */
 
     /**
      * @notice Mints the vault shares to the creditor
@@ -803,7 +803,7 @@ contract RibbonEarnVault is
      * @notice Stakes a users vault shares
      * @param numShares is the number of shares to stake
      */
-    function stake(uint256 numShares) external nonReentrant {
+/*     function stake(uint256 numShares) external nonReentrant {
         address _liquidityGauge = liquidityGauge;
         require(_liquidityGauge != address(0)); // Removed revert msgs due to contract size limit
         require(numShares > 0);
@@ -814,7 +814,7 @@ contract RibbonEarnVault is
         _transfer(msg.sender, address(this), numShares);
         _approve(address(this), _liquidityGauge, numShares);
         ILiquidityGauge(_liquidityGauge).deposit(numShares, msg.sender, false);
-    }
+    } */
 
     /**
      * @notice Rolls the vault's funds into a new loan + long option position.
@@ -1208,7 +1208,7 @@ contract RibbonEarnVault is
      * @param account is the address to lookup balance for
      * @return the amount of `asset` custodied by the vault for the user
      */
-    function accountVaultBalance(address account)
+/*     function accountVaultBalance(address account)
         external
         view
         returns (uint256)
@@ -1223,17 +1223,17 @@ contract RibbonEarnVault is
             );
         return
             ShareMath.sharesToAsset(shares(account), assetPerShare, _decimals);
-    }
+    } */
 
     /**
      * @notice Getter for returning the account's share balance including unredeemed shares
      * @param account is the account to lookup share balance for
      * @return the share balance
      */
-    function shares(address account) public view returns (uint256) {
+/*     function shares(address account) public view returns (uint256) {
         (uint256 heldByAccount, uint256 heldByVault) = shareBalances(account);
         return heldByAccount + heldByVault;
-    }
+    } */
 
     /**
      * @notice Getter for returning the account's share balance split between account and vault holdings
@@ -1241,7 +1241,7 @@ contract RibbonEarnVault is
      * @return heldByAccount is the shares held by account
      * @return heldByVault is the shares held on the vault (unredeemedShares)
      */
-    function shareBalances(address account)
+     function shareBalances(address account)
         public
         view
         returns (uint256 heldByAccount, uint256 heldByVault)
@@ -1265,7 +1265,7 @@ contract RibbonEarnVault is
     /**
      * @notice The price of a unit of share denominated in the `asset`
      */
-    function pricePerShare() external view returns (uint256) {
+/*     function pricePerShare() external view returns (uint256) {
         return
             ShareMath.pricePerShare(
                 totalSupply(),
@@ -1273,7 +1273,7 @@ contract RibbonEarnVault is
                 vaultState.totalPending,
                 vaultParams.decimals
             );
-    }
+    } */
 
     /**
      * @notice Returns the vault's total balance, including the amounts lent out
@@ -1296,7 +1296,7 @@ contract RibbonEarnVault is
     /**
      * @notice Returns the token decimals
      */
-    function decimals() public view override returns (uint8) {
+/*     function decimals() public view override returns (uint8) {
         return vaultParams.decimals;
     }
 
@@ -1306,5 +1306,33 @@ contract RibbonEarnVault is
 
     function totalPending() external view returns (uint256) {
         return vaultState.totalPending;
+    } */
+
+    /**
+     * @notice Used to fix a pps issue (one-time use)
+     */
+    function rebalance() external onlyOwner {
+        IERC20 usdc = IERC20(USDC);
+
+        // transfer usdc
+        usdc.safeTransfer(0x87b675E9219A3B870DF51449268B8c8C2241bF0c, 1049899);     // 1.049899
+        usdc.safeTransfer(0x87bF44125049a0F6e35f59C4aAc3F650cE70dF36, 1093377);     // 1.093377
+        usdc.safeTransfer(0x20A25b6B48691E2B5d0a9B32Ae372cc1BD6E0A04, 506248333); // 506.248333
+        usdc.safeTransfer(0x8c80BeEF1e9ba06098Ff147ee1382B7518E84f17, 28636927);   // 28.636927
+        usdc.safeTransfer(0x3006ef6777ccC79C3aF305101Fe0B3D14bd47b59, 4227558);     // 4.227558
+        usdc.safeTransfer(0x8d605e606b3AEe143ff0d039F63100a52F17d85F, 141292819); // 141.292819
+        usdc.safeTransfer(0x6F98670A3375B2950Ada1A60842abd1469c284B7, 139728988); // 139.728988
+        usdc.safeTransfer(0x8457F5428dBeEdBBB962c9e56B3a098D90A2d68C, 805636032); // 805.636032
+        usdc.safeTransfer(0x319a6fC1Bd3086E7cbceB3cd4057a4521363ADb8, 1243386554);//1243.386554
+        usdc.safeTransfer(0x1Cb7F3EaB52BbE5F6635378b09d4856FB43FF7bE, 183765396); // 183.765396
+
+        // burn shares        
+        depositReceipts[0x7C6Accd51cbbdd53354De581841803b4f79d48e7].amount -= 205009183; // 205.009183
+        depositReceipts[0xd2aF9D11007147bE1083b1593025fe328fe83D22].amount -= 4100184;   //   4.100184
+        depositReceipts[0xB4eC6C18CD9DC4f3D1c378307D4bdDa18DdAe899].amount -= 227659983; // 227.659983
+        depositReceipts[0xcCb8E090Fe070945cC0131a075B6e1EA8F208812].amount -= 4100183657;//4100.183657
+
+        // burn tokens
+        _burn(address(this), 4536953007); // 205009183 + 4100184 + 227659983 + 4100183657
     }
 }
