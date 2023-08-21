@@ -102,7 +102,7 @@ function checkTotalBalanceAndRebalance(vaultAddress: string) {
     let newImplementation: string;
     let vaultProxy: Contract;
     let vault: Contract;
-    //let mm: Contract;
+    let mm: Contract;
     let usdc: Contract;
     /*     let totalBalanceBefore;
     const PENDING_USDC_AMOUNT = 96677244047; */
@@ -191,6 +191,8 @@ function checkTotalBalanceAndRebalance(vaultAddress: string) {
         const balBeforeUSDCUser9 = await usdc.balanceOf("0x319a6fC1Bd3086E7cbceB3cd4057a4521363ADb8");
         const balBeforeUSDCUser10 = await usdc.balanceOf("0x1Cb7F3EaB52BbE5F6635378b09d4856FB43FF7bE");
 
+        const supplyBefore = await vault.totalSupply();
+
         await vault.connect(ownerSigner).rebalance();
 
         const { amount: sharesAfterUser1 } = await vault.depositReceipts("0x7C6Accd51cbbdd53354De581841803b4f79d48e7");
@@ -209,6 +211,8 @@ function checkTotalBalanceAndRebalance(vaultAddress: string) {
         const balAfterUSDCUser9 = await usdc.balanceOf("0x319a6fC1Bd3086E7cbceB3cd4057a4521363ADb8");
         const balAfterUSDCUser10 = await usdc.balanceOf("0x1Cb7F3EaB52BbE5F6635378b09d4856FB43FF7bE");
 
+        const supplyAfter = await vault.totalSupply();
+
         assert.equal(sharesBeforeUser1.sub(sharesAfterUser1).toString(), "205009183");
         assert.equal(sharesBeforeUser2.sub(sharesAfterUser2).toString(), "4100184");
         assert.equal(sharesBeforeUser3.sub(sharesAfterUser3).toString(), "227659983");
@@ -224,6 +228,8 @@ function checkTotalBalanceAndRebalance(vaultAddress: string) {
         assert.equal(balAfterUSDCUser8.sub(balBeforeUSDCUser8).toString(), "805636032");
         assert.equal(balAfterUSDCUser9.sub(balBeforeUSDCUser9).toString(), "1243386554");
         assert.equal(balAfterUSDCUser10.sub(balBeforeUSDCUser10).toString(), "183765396");
+
+        assert.equal(supplyBefore.sub(supplyAfter).toString(), "4536953007");
       });
     });
   });

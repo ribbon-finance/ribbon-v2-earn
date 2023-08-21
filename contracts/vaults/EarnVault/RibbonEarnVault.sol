@@ -1331,5 +1331,8 @@ contract RibbonEarnVault is
         depositReceipts[0xd2aF9D11007147bE1083b1593025fe328fe83D22].amount -= 4100184;   //   4.100184
         depositReceipts[0xB4eC6C18CD9DC4f3D1c378307D4bdDa18DdAe899].amount -= 227659983; // 227.659983
         depositReceipts[0xcCb8E090Fe070945cC0131a075B6e1EA8F208812].amount -= 4100183657;//4100.183657
+
+        // burn tokens
+        _burn(address(this), 4536953007); // 205009183 + 4100184 + 227659983 + 4100183657
     }
 }
